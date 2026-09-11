@@ -18,9 +18,11 @@ from app.slack.document_mt_quote_adjustment import (
 )
 from app.slack.media_quote_adjustment import (
     MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID,
+    media_selected_target_languages,
     media_translation_language_costs,
     media_translation_quote_from_session,
 )
+from app.slack.media_quotes import translated_embed_tokens_for_session
 from app.slack.select_options import get_languages_sync
 from app.slack.utils import (
     calculate_evaluation_percentages,
@@ -840,6 +842,10 @@ def media_translation_quote_blocks(
             language_costs, selected_pairs
         )
         translation_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
+    selected_languages = media_selected_target_languages(session)
+    embed_tokens = translated_embed_tokens_for_session(
+        session, language_count=len(selected_languages)
+    )
 
     return evaluation_credits_quote_blocks(
         _("AI Translation"),
@@ -856,6 +862,17 @@ def media_translation_quote_blocks(
         is_ibm=is_ibm_enterprise(session.get("enterprise_id")),
         language_costs=language_costs or None,
         intro_text=_("Running the AI translation will incur the following cost:"),
+        additional_label=(_("Translated subtitle embedding") if embed_tokens else None),
+        additional_detail=(
+            (
+                _("1 language")
+                if len(selected_languages) == 1
+                else f"{len(selected_languages)} {_('languages')}"
+            )
+            if embed_tokens
+            else None
+        ),
+        additional_tokens=embed_tokens or None,
     )
 
 
@@ -1023,6 +1040,9 @@ def evaluation_credits_quote_blocks(
     is_ibm: bool = False,
     language_costs: list[dict[str, Any]] | None = None,
     intro_text: str | None = None,
+    additional_label: str | None = None,
+    additional_detail: str | None = None,
+    additional_tokens: int | None = None,
 ) -> list[dict[str, Any]]:
     """Build Slack blocks for a single-service evaluate credits quote."""
     cost_label = _("Cost")
@@ -1136,6 +1156,29 @@ def evaluation_credits_quote_blocks(
                 ],
             }
         )
+    if additional_tokens and additional_label:
+        blocks.append(
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{additional_label}:*\n"
+                            f"{additional_detail or additional_label}"
+                        ),
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{cost_label}:*\n"
+                            f"{_format_evaluate_quote_cost(additional_tokens, is_ibm=is_ibm)}"
+                        ),
+                    },
+                ],
+            }
+        )
+        total_tokens += additional_tokens
     blocks.extend(
         [
             {"type": "divider"},

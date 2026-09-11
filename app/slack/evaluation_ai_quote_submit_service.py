@@ -44,6 +44,7 @@ from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSLATION_ACCEPT,
     STAGE_CANCELLED,
     get_media_quote_session,
+    translated_embed_tokens_for_session,
     update_media_quote_session,
 )
 from app.slack.pdf_evaluate_quotes import (
@@ -122,7 +123,9 @@ async def persist_ai_quote_adjustment(
         ):
             return False
         quote = media_translation_quote_from_session(session)
-        tokens = document_mt_tokens_for_pairs(quote, pairs)
+        tokens = document_mt_tokens_for_pairs(
+            quote, pairs
+        ) + translated_embed_tokens_for_session(session, language_count=len(pairs))
         resolved_channel_id = str(
             channel_id or session.get("channel_id") or context.get("channel_id") or ""
         )

@@ -144,6 +144,17 @@ def embedding_tokens_for_duration(duration_ms: int, target_count: int) -> int:
     return duration_to_subtitling_tokens(duration_ms) * target_count
 
 
+def translated_embed_tokens_for_session(
+    session: dict[str, Any], *, language_count: int
+) -> int:
+    """Mux tokens for Quote2 when translated embedding is selected."""
+    if not session.get("embed_translated"):
+        return 0
+    return embedding_tokens_for_duration(
+        int(session.get("duration_ms") or 0), language_count
+    )
+
+
 def build_quote1_line_items(
     *,
     pipeline_kind: str,

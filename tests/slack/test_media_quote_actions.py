@@ -235,6 +235,85 @@ async def test_accept_translation_quote_reprices_selected_pairs():
 
 
 @pytest.mark.asyncio
+async def test_accept_translation_quote_includes_translated_embed_in_balance():
+    from app.slack.media_quote_actions import accept_media_translation_quote
+    from app.slack.media_quotes import (
+        embedding_tokens_for_duration,
+        media_translation_tokens,
+    )
+
+    client = AsyncMock()
+    context = {
+        "user_id": "U1",
+        "team_id": "T1",
+        "ray": MagicMock(),
+    }
+    context_obj = MagicMock()
+    context_obj.__getitem__ = lambda self, key: context[key]
+    context_obj.get = lambda key, default=None: context.get(key, default)
+    context_obj.enterprise_id = None
+    context_obj["ray"].client = MagicMock()
+    context_obj["ray"].client.id_token = "tok"
+    context_obj["ray"].super_group = None
+
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": STAGE_AWAITING_TRANSLATION_ACCEPT,
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "total_tokens": media_translation_tokens(1000, 2),
+        "channel_id": "C1",
+        "task_uuid": "task-1",
+        "file_id": "F1",
+        "file_name": "clip.mp4",
+        "source_text_length": 1000,
+        "target_languages": ["es", "fr"],
+        "target_language_names": ["Spanish", "French"],
+        "selected_pairs": ["F1:es"],
+        "thread_ts": None,
+        "embed_translated": True,
+        "duration_ms": 60_000,
+    }
+
+    with patch(
+        "app.slack.media_quote_actions.get_media_quote_session",
+        new=AsyncMock(return_value=session),
+    ):
+        with patch("app.slack.media_quote_actions.redis_conn") as mock_redis:
+            mock_redis.set = AsyncMock(return_value=True)
+            mock_redis.delete = AsyncMock()
+            with patch(
+                "app.slack.media_quote_actions._require_ai_token_balance",
+                new=AsyncMock(return_value=True),
+            ) as mock_balance:
+                with patch(
+                    "app.slack.media_quote_actions._resume_translate_phase",
+                    new=AsyncMock(),
+                ):
+                    with patch(
+                        "app.slack.media_quote_actions.update_media_quote_session",
+                        new=AsyncMock(return_value={**session, "stage": "translating"}),
+                    ):
+                        with patch(
+                            "app.slack.media_quote_actions._update_quote_message",
+                            new=AsyncMock(),
+                        ):
+                            await accept_media_translation_quote(
+                                client=client,
+                                body={
+                                    "channel": {"id": "C1"},
+                                    "message": {"ts": "1.2"},
+                                },
+                                action={"value": "q1"},
+                                context=context_obj,
+                            )
+
+    assert mock_balance.await_args.args[2] == media_translation_tokens(
+        1000, 1
+    ) + embedding_tokens_for_duration(60_000, 1)
+
+
+@pytest.mark.asyncio
 async def test_accept_configure_translation_quote_tells_user_when_reducer_rejects():
     from app.media.media_workflow import (
         MediaWorkflowEvent,

@@ -320,6 +320,36 @@ class TestMediaTranslationQuoteBlocks:
         assert "French" in rendered
         assert "human review" not in rendered
         assert "media_translation_quote_cancel" not in rendered
+        assert "Translated subtitle embedding" not in rendered
+        assert "*Total cost:* USD 12.00" in rendered
+
+    def test_media_translation_quote_blocks_include_translated_embed_when_selected(
+        self,
+    ):
+        session = self._session()
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+        rendered = str(blocks)
+
+        assert "Translated subtitle embedding" in rendered
+        assert "2 languages" in rendered
+        assert "USD 1.20" in rendered
+        assert "*Total cost:* USD 13.20" in rendered
+
+    def test_media_translation_quote_blocks_embed_follows_selected_languages(self):
+        session = self._session()
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+        session["selected_pairs"] = ["Fmedia:es"]
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+        rendered = str(blocks)
+
+        assert "Translated subtitle embedding" in rendered
+        assert "1 language" in rendered
+        assert "*Total cost:* USD 6.60" in rendered
 
     def test_media_translation_quote_blocks_empty_selected_pairs_all_cancelled(self):
         session = self._session()

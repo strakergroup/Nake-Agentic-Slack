@@ -63,6 +63,7 @@ from app.slack.media_quotes import (
     media_quote_blocks,
     media_quote_lock_key,
     translate_resume_pipeline_type,
+    translated_embed_tokens_for_session,
     update_media_quote_session,
 )
 from app.slack.middleware import require_ray_client
@@ -578,10 +579,11 @@ async def accept_media_translation_quote(
     try:
         required_tokens = int(session.get("total_tokens") or 0)
         if "selected_pairs" in session:
+            pairs = [str(pair) for pair in session.get("selected_pairs") or []]
             required_tokens = document_mt_tokens_for_pairs(
                 media_translation_quote_from_session(session),
-                [str(pair) for pair in session.get("selected_pairs") or []],
-            )
+                pairs,
+            ) + translated_embed_tokens_for_session(session, language_count=len(pairs))
         if not await _require_ai_token_balance(context, client, required_tokens):
             return False
 

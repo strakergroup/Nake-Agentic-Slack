@@ -285,6 +285,44 @@ class TestPersistMediaTranslationQuoteAdjustment:
             status_message=None,
         )
 
+    async def test_persists_translated_embed_tokens_in_total(self):
+        from app.slack.media_quotes import embedding_tokens_for_duration
+
+        client = AsyncMock()
+        session = _session(embed_translated=True, duration_ms=60_000)
+        with (
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.get_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ) as mock_update_session,
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_media_translation_quote_slack_message",
+                new_callable=AsyncMock,
+            ),
+        ):
+            persisted = await persist_ai_quote_adjustment(
+                client,
+                quote_id="quote-1",
+                quote_kind="media_translation",
+                selected_pairs=["Fmedia:es"],
+                user_id="U1",
+                context={},
+                channel_id="C1",
+                message_ts="111.222",
+            )
+
+        assert persisted is True
+        updates = mock_update_session.await_args.args[1]
+        assert updates["total_tokens"] == media_translation_tokens(
+            150000, 1
+        ) + embedding_tokens_for_duration(60_000, 1)
+
     async def test_empty_selection_cancels_and_fails_submissions(self):
         client = AsyncMock()
         updated_session = _session(selected_pairs=[], stage="cancelled")
