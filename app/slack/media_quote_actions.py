@@ -256,16 +256,19 @@ async def _resume_translate_phase(
         )
         if session.get("submission_ids"):
             extra_data["submission_ids"] = session["submission_ids"]
+        task_values: dict[str, Any] = {
+            "pipeline_type": next_pipeline,
+            "status": "pending",
+            "stage": None,
+            "error_message": None,
+            "extra_data": extra_data,
+        }
+        if session.get("approved_source_srt_file_id"):
+            task_values["result_file_id"] = session["approved_source_srt_file_id"]
         await db_session.execute(
             update(TranscriptionTask)
             .where(TranscriptionTask.task_uuid == task_uuid)
-            .values(
-                pipeline_type=next_pipeline,
-                status="pending",
-                stage=None,
-                error_message=None,
-                extra_data=extra_data,
-            )
+            .values(**task_values)
         )
         await db_session.commit()
 

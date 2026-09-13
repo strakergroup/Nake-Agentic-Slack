@@ -198,7 +198,7 @@ def advance_media_workflow(
         event is MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
         and stage is MediaWorkflowStage.TRANSCRIBING
     ):
-        if session.config.embed_source:
+        if session.config.review_gate:
             return MediaWorkflowDecision(
                 session=_session_in(session, MediaWorkflowStage.AWAITING_SOURCE_REVIEW),
                 commands=(MediaWorkflowCommand.POST_SOURCE_REVIEW,),

@@ -1251,3 +1251,53 @@ async def test_quote_admin_can_accept_another_users_translation_quote():
         for call in client.chat_postMessage.await_args_list
     ]
     assert all("permission" not in text.lower() for text in texts)
+
+
+@pytest.mark.asyncio
+async def test_resume_translate_uses_replaced_source_srt():
+    from app.slack.media_quote_actions import _resume_translate_phase
+
+    captured = []
+    source_task = SimpleNamespace(extra_data={})
+
+    class _FakeDb:
+        async def get(self, model, key):
+            return source_task
+
+        async def execute(self, stmt):
+            captured.append(stmt)
+
+        async def commit(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    session = {
+        "quote_id": "q1",
+        "workflow_type": "transcribe_translate",
+        "embed_source": False,
+        "embed_translated": True,
+        "approved_source_srt_file_id": "srt-replaced",
+        "target_languages": ["es"],
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.AsyncSession",
+            return_value=_FakeDb(),
+        ),
+        patch("app.slack.media_quote_actions.httpx.AsyncClient") as mock_http,
+    ):
+        mock_http.return_value.__aenter__.return_value.post = AsyncMock()
+        await _resume_translate_phase(
+            task_uuid="asr-task",
+            pipeline_kind=PIPELINE_TRANSCRIBE_TRANSLATE,
+            session=session,
+        )
+
+    compiled = captured[0].compile()
+    assert compiled.params.get("result_file_id") == "srt-replaced"

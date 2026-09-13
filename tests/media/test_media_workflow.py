@@ -39,6 +39,22 @@ def test_transcription_completed_with_review_gate_posts_source_review():
     assert decision.commands == (MediaWorkflowCommand.POST_SOURCE_REVIEW,)
 
 
+def test_transcription_completed_translated_embed_posts_source_review():
+    session = _transcribing(
+        make_media_workflow_session(
+            workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
+            embed_source=False,
+            embed_translated=True,
+            target_languages=("de",),
+        )
+    )
+    decision = advance_media_workflow(
+        session, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
+    )
+    assert decision.session.stage == MediaWorkflowStage.AWAITING_SOURCE_REVIEW
+    assert decision.commands == (MediaWorkflowCommand.POST_SOURCE_REVIEW,)
+
+
 def test_transcription_completed_gate_off_transcribe_only_no_embed_is_done():
     session = _transcribing(
         make_media_workflow_session(
@@ -304,6 +320,10 @@ def test_translated_review_then_embed():
     session = _transcribing(session)
     session = advance_media_workflow(
         session, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
+    ).session
+    assert session.stage == MediaWorkflowStage.AWAITING_SOURCE_REVIEW
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.SOURCE_SRT_APPROVED
     ).session
     assert session.stage == MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
     session = advance_media_workflow(

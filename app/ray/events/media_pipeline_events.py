@@ -33,6 +33,7 @@ from app.media.media_workflow import (
     MediaWorkflowTransitionError,
     MediaWorkflowType,
     advance_media_workflow,
+    configure_srt_review_enabled,
     media_workflow_session_from_quote,
 )
 from app.media.transcript_zip import transcript_zip_session_updates
@@ -763,7 +764,7 @@ async def handle_transcription_complete(
             quote_id = extra_data.get("media_quote_id")
             source_review = bool(
                 extra_data.get("workflow_type")
-                and extra_data.get("embed_source")
+                and configure_srt_review_enabled(extra_data)
                 and quote_id
             )
             if source_review:
