@@ -43,6 +43,11 @@ from app.slack.media_quotes import (
     total_tokens_from_line_items,
     update_media_quote_session,
 )
+from app.slack.modal_trigger import (
+    open_loading_modal,
+    safe_views_update,
+    status_modal,
+)
 from app.slack.templates.messages import (
     MediaSrtApproveContinueMessage,
     MediaSrtReviewMessage,
@@ -598,10 +603,26 @@ async def handle_media_srt_replace_open(
     from app.slack.templates.views import media_srt_replace_modal
 
     quote_id, language = parse_media_srt_review_value(str(action.get("value") or ""))
-    await client.views_open(
-        trigger_id=body["trigger_id"],
-        view=media_srt_replace_modal(quote_id, language=language),
-    )
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await safe_views_update(
+            client,
+            view_id,
+            media_srt_replace_modal(quote_id, language=language),
+        )
+    except SlackApiError as exc:
+        notify_exception(exc)
+        await safe_views_update(
+            client,
+            view_id,
+            status_modal(
+                _("Replace file")[:24],
+                _(
+                    "Upload your edited subtitle file in this thread to replace "
+                    "the file under review."
+                ),
+            ),
+        )
 
 
 async def handle_media_srt_replace_submit(

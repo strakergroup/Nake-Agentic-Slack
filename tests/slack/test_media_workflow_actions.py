@@ -1631,3 +1631,55 @@ async def test_replace_submit_uses_language_from_private_metadata():
     updates = mock_update.await_args.args[1]
     assert updates["approved_translated_srt_file_id"] == "fs-replaced"
     assert updates["approved_translated_srt_language"] == "fi"
+
+
+@pytest.mark.asyncio
+async def test_replace_open_loads_then_shows_file_picker():
+    from app.slack.media_workflow_actions import handle_media_srt_replace_open
+
+    client = AsyncMock()
+    client.views_open.return_value = {"view": {"id": "V1"}}
+
+    await handle_media_srt_replace_open(
+        client=client,
+        body={"trigger_id": "trig-1"},
+        action={"value": "q1"},
+    )
+
+    client.views_open.assert_awaited_once()
+    assert client.views_open.await_args.kwargs["trigger_id"] == "trig-1"
+    opened = client.views_open.await_args.kwargs["view"]
+    assert opened.get("callback_id") != "media_srt_replace_submit"
+    client.views_update.assert_awaited_once()
+    updated = client.views_update.await_args.kwargs["view"]
+    assert updated["callback_id"] == "media_srt_replace_submit"
+    assert any(
+        block.get("element", {}).get("type") == "file_input"
+        for block in updated["blocks"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_replace_open_falls_back_when_file_picker_rejected():
+    from slack_sdk.errors import SlackApiError
+
+    from app.slack.media_workflow_actions import handle_media_srt_replace_open
+
+    client = AsyncMock()
+    client.views_open.return_value = {"view": {"id": "V1"}}
+    client.views_update.side_effect = [
+        SlackApiError("invalid", {"error": "invalid_blocks"}),
+        {"ok": True},
+    ]
+
+    with patch("app.slack.media_workflow_actions.notify_exception"):
+        await handle_media_srt_replace_open(
+            client=client,
+            body={"trigger_id": "trig-1"},
+            action={"value": "q1"},
+        )
+
+    assert client.views_update.await_count == 2
+    fallback = client.views_update.await_args_list[1].kwargs["view"]
+    assert fallback.get("callback_id") != "media_srt_replace_submit"
+    assert "thread" in fallback["blocks"][0]["text"]["text"].lower()

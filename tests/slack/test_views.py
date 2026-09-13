@@ -849,7 +849,7 @@ class TestMediaSrtReplaceModal:
         file_block = _modal_block(modal, "srt_file")
         element = file_block["element"]
         assert element["type"] == "file_input"
-        assert element["filetypes"] == ["srt"]
+        assert "filetypes" not in element
         assert element["max_files"] == 1
         assert modal["title"]["text"] == "Replace file"
         assert file_block["label"]["text"] == "Replacement file"
