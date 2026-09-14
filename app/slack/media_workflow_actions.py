@@ -277,6 +277,9 @@ async def apply_thread_srt_review_replace(
         if event is MediaWorkflowEvent.TRANSLATED_SRT_REPLACED:
             if replaced_language:
                 updates["approved_translated_srt_language"] = replaced_language
+                file_ids = dict(session.get("approved_translated_srt_file_ids") or {})
+                file_ids[replaced_language] = file_server_id
+                updates["approved_translated_srt_file_ids"] = file_ids
         await update_media_quote_session(quote_id, updates)
         if event is MediaWorkflowEvent.SOURCE_SRT_REPLACED:
             auto_workflow = media_workflow_session_from_quote({**session, **updates})

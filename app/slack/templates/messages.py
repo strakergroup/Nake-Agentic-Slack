@@ -3273,7 +3273,6 @@ class MediaSrtReviewMessage(SlackMessage):
         language: str | None = None,
         file_label: str | None = None,
     ) -> None:
-        del file_label
         replace_value = (
             json.dumps({"quote_id": quote_id, "language": language})
             if language
@@ -3284,10 +3283,19 @@ class MediaSrtReviewMessage(SlackMessage):
             action_id="media_srt_replace",
             value=replace_value,
         )
-        actions = ActionsBlock(elements=[replace_button])
+        blocks: list[dict] = []
+        if file_label:
+            blocks.append(
+                SectionBlock(
+                    text=MarkdownTextObject(
+                        text=_("For *{file_label}*:").format(file_label=file_label)
+                    ),
+                ).to_dict()
+            )
+        blocks.append(ActionsBlock(elements=[replace_button]).to_dict())
         super().__init__(
             _("Edit and reupload"),
-            [actions.to_dict()],
+            blocks,
         )
 
 

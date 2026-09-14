@@ -63,6 +63,12 @@ def _translated_srt_map(
     fallback_languages: list[str],
 ) -> dict[str, str]:
     ids_map = dict(task.translated_file_ids or {})
+    stored_ids = session.get("approved_translated_srt_file_ids")
+    if isinstance(stored_ids, dict) and stored_ids:
+        for stored_language, stored_file_id in stored_ids.items():
+            if stored_language and stored_file_id:
+                ids_map[str(stored_language)] = str(stored_file_id)
+        return ids_map
     if not replacement_id:
         return ids_map
     language = session.get("approved_translated_srt_language")

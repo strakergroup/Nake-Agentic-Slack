@@ -1915,6 +1915,79 @@ async def test_replace_submit_uses_language_from_private_metadata():
     updates = mock_update.await_args.args[1]
     assert updates["approved_translated_srt_file_id"] == "fs-replaced"
     assert updates["approved_translated_srt_language"] == "fi"
+    assert updates["approved_translated_srt_file_ids"] == {"fi": "fs-replaced"}
+
+
+@pytest.mark.asyncio
+async def test_second_language_replace_keeps_first_replacement():
+    from app.slack.media_workflow_actions import apply_thread_srt_review_replace
+
+    client = AsyncMock()
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": "awaiting_translation_review",
+        "workflow_type": "transcribe_translate",
+        "embed_source": False,
+        "embed_translated": True,
+        "review_gate": True,
+        "target_languages": ["es", "fi"],
+        "target_language_names": ["Spanish", "Finnish"],
+        "source_text_length": 500,
+        "duration_ms": 60_000,
+        "file_id": "F1",
+        "file_name": "clip.mp4",
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "task_uuid": "task-1",
+        "approved_translated_srt_file_id": "fs-old-es",
+        "approved_translated_srt_language": "es",
+        "approved_translated_srt_file_ids": {"es": "fs-old-es"},
+    }
+    store = dict(session)
+
+    async def _update(quote_id, updates):
+        store.update(updates)
+        return dict(store)
+
+    context = MagicMock()
+    with (
+        patch(
+            "app.slack.media_workflow_actions.media_quote_actor_may_continue",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "app.slack.media_workflow_actions._upload_slack_srt_to_file_server",
+            new=AsyncMock(return_value="fs-new-fi"),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new=AsyncMock(side_effect=_update),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.post_media_quote_message",
+            new=AsyncMock(),
+        ),
+        patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        replaced = await apply_thread_srt_review_replace(
+            client=client,
+            session=session,
+            slack_file_id="F9",
+            uploaded_name="clip_Finnish.srt",
+            acting_user_id="U1",
+            language="fi",
+            context=context,
+        )
+
+    assert replaced is True
+    assert store["approved_translated_srt_file_ids"] == {
+        "es": "fs-old-es",
+        "fi": "fs-new-fi",
+    }
 
 
 @pytest.mark.asyncio

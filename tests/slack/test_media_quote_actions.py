@@ -865,6 +865,34 @@ def test_translated_only_embed_tracks_omit_source():
     assert billing == ["fi", "es"]
 
 
+def test_translated_embed_tracks_use_every_replaced_language():
+    from app.slack.media_configure_embed import _configure_embed_tracks
+
+    task = SimpleNamespace(
+        result_file_id="srt-source",
+        translated_file_ids={"fi": "srt-fi", "es": "srt-es"},
+        detected_language="en",
+    )
+    ids, langs, billing = _configure_embed_tracks(
+        session={
+            "embed_source": False,
+            "embed_translated": True,
+            "target_languages": ["fi", "es"],
+            "approved_translated_srt_file_id": "srt-new-fi",
+            "approved_translated_srt_language": "fi",
+            "approved_translated_srt_file_ids": {
+                "fi": "srt-new-fi",
+                "es": "srt-new-es",
+            },
+        },
+        task=task,
+        translated=True,
+    )
+    assert ids == ["srt-new-fi", "srt-new-es"]
+    assert langs == ["fi", "es"]
+    assert billing == ["fi", "es"]
+
+
 @pytest.mark.asyncio
 async def test_translated_embed_ignores_replacement_without_language():
     from app.slack.media_configure_embed import resume_configure_embed_phase

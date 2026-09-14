@@ -1325,6 +1325,7 @@ class TestMediaSrtReviewMessage:
         assert not _blocks_contain_action(message.blocks, "media_srt_approve_continue")
         dumped = json.dumps(message.blocks)
         assert "Edit and reupload" in dumped
+        assert "clip_Finnish.srt" in dumped
         assert "Approve & Continue" not in dumped
         assert "Review" not in dumped
         replace = next(
