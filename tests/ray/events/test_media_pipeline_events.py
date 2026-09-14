@@ -176,7 +176,7 @@ async def test_handle_transcription_complete_withholds_word_when_review_pending(
 
 
 @pytest.mark.asyncio
-async def test_handle_transcription_complete_records_transcript_zip_entries():
+async def test_handle_transcription_complete_does_not_record_zip_entries():
     from app.ray.events.media_pipeline_events import handle_transcription_complete
 
     client = AsyncMock()
@@ -231,10 +231,7 @@ async def test_handle_transcription_complete_records_transcript_zip_entries():
         for call in mock_update.await_args_list
         if "transcript_zip_entries" in call.args[1]
     ]
-    assert zip_updates[-1]["transcript_zip_entries"] == [
-        {"file_id": "file-1", "filename": "clip.srt"},
-        {"file_id": "docx-1", "filename": "clip.docx"},
-    ]
+    assert zip_updates == []
 
 
 @pytest.mark.asyncio
@@ -407,15 +404,12 @@ async def test_handle_transcription_complete_skips_review_when_auto_proceed():
         )
 
     assert mock_enqueue.await_args.kwargs["srt_review_quote_id"] is None
-    zip_updates = [
-        call.args[1]
+    assert all(
+        "transcript_zip_entries" not in call.args[1]
+        and "defer_source_review" not in call.args[1]
         for call in mock_update.await_args_list
-        if isinstance(call.args[1], dict) and "transcript_zip_entries" in call.args[1]
-    ]
-    assert zip_updates[-1]["transcript_zip_entries"] == [
-        {"file_id": "file-1", "filename": "clip.srt"},
-    ]
-    assert all("defer_source_review" not in update for update in zip_updates)
+        if isinstance(call.args[1], dict)
+    )
 
 
 @pytest.mark.asyncio
@@ -943,16 +937,14 @@ async def test_handle_translation_complete_uploads_srt_only_without_word(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_handle_translation_complete_records_transcript_zip_entries(tmp_path):
+async def test_handle_translation_complete_does_not_record_zip_entries(tmp_path):
     from app.ray.events.media_pipeline_events import handle_translation_complete
 
     srt = tmp_path / "es.srt"
     srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
-    docx = tmp_path / "es.docx"
-    docx.write_bytes(b"fake-docx")
 
     async def _download(file_id: str) -> dict[str, str]:
-        return {"file": str(srt) if file_id == "file-es" else str(docx)}
+        return {"file": str(srt)}
 
     client = AsyncMock()
     client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
@@ -964,15 +956,11 @@ async def test_handle_translation_complete_records_transcript_zip_entries(tmp_pa
         extra_data={
             "media_quote_id": "q1",
             "workflow_type": "transcribe_translate",
-            "word_translated_file_ids": {"es": "docx-es"},
         },
     )
     auth = SimpleNamespace(slack_user=SimpleNamespace(enterprise_id=None))
     session = {
         "workflow_type": "transcribe_translate",
-        "transcript_zip_entries": [
-            {"file_id": "file-1", "filename": "clip.srt"},
-        ],
     }
 
     with (
@@ -1003,15 +991,11 @@ async def test_handle_translation_complete_records_transcript_zip_entries(tmp_pa
     ):
         await handle_translation_complete(client, "C1", "123.456", task_info, auth)
 
-    zip_updates = [
-        call.args[1]
+    assert all(
+        "transcript_zip_entries" not in call.args[1]
         for call in mock_update.await_args_list
-        if isinstance(call.args[1], dict) and "transcript_zip_entries" in call.args[1]
-    ]
-    assert zip_updates[-1]["transcript_zip_entries"] == [
-        {"file_id": "file-1", "filename": "clip.srt"},
-        {"file_id": "file-es", "filename": "clip_Spanish.srt"},
-    ]
+        if isinstance(call.args[1], dict)
+    )
 
 
 @pytest.mark.asyncio

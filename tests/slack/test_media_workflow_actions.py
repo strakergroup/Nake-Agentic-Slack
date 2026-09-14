@@ -619,9 +619,11 @@ async def test_quote_admin_can_replace_another_users_review_file():
         mock_redis.delete = AsyncMock()
         await handle_media_srt_replace_submit(view=view, client=client, context=context)
 
-    assert mock_update.await_args.args[1]["approved_source_srt_file_id"] == (
-        "fs-replaced"
-    )
+    stored = {}
+    for call in mock_update.await_args_list:
+        stored.update(call.args[1])
+    assert stored["approved_source_srt_file_id"] == "fs-replaced"
+    assert stored["stage"] == "done"
 
 
 @pytest.mark.asyncio
@@ -821,6 +823,154 @@ async def test_approve_source_srt_posts_deferred_word_transcript():
         cleared.update(call.args[1])
     assert cleared.get("deferred_word_file_id") is None
     assert cleared.get("deferred_word_file_name") is None
+
+
+@pytest.mark.asyncio
+async def test_source_replace_auto_advances_without_approve_click():
+    from app.slack.media_workflow_actions import apply_thread_srt_review_replace
+
+    client = AsyncMock()
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": "awaiting_source_review",
+        "workflow_type": "transcribe_translate",
+        "embed_source": False,
+        "embed_translated": True,
+        "review_gate": True,
+        "target_languages": ["es"],
+        "target_language_names": ["Spanish"],
+        "source_text_length": 500,
+        "duration_ms": 60_000,
+        "file_id": "F1",
+        "file_name": "clip.mp4",
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "task_uuid": "task-1",
+    }
+    store = dict(session)
+
+    async def _update(quote_id, updates):
+        store.update(updates)
+        return dict(store)
+
+    context = MagicMock()
+    with (
+        patch(
+            "app.slack.media_workflow_actions.media_quote_actor_may_continue",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "app.slack.media_workflow_actions._upload_slack_srt_to_file_server",
+            new=AsyncMock(return_value="fs-new"),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new=AsyncMock(side_effect=_update),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.post_media_quote_message",
+            new=AsyncMock(),
+        ) as mock_quote2,
+        patch(
+            "app.slack.media_workflow_actions.auto_accept_media_translation_quote_if_needed",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.post_deferred_word_transcript",
+            new=AsyncMock(),
+        ),
+        patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        replaced = await apply_thread_srt_review_replace(
+            client=client,
+            session=session,
+            slack_file_id="F9",
+            uploaded_name="clip.srt",
+            acting_user_id="U1",
+            context=context,
+        )
+
+    assert replaced is True
+    assert store["approved_source_srt_file_id"] == "fs-new"
+    assert store["stage"] == "awaiting_translation_accept"
+    mock_quote2.assert_awaited_once()
+    posted = str(client.chat_postMessage.await_args_list)
+    assert "Continuing with your updated subtitles" in posted
+    assert "Click *Approve & Continue* when you are ready" not in posted
+
+
+@pytest.mark.asyncio
+async def test_translated_replace_still_waits_for_approve_click():
+    from app.slack.media_workflow_actions import apply_thread_srt_review_replace
+
+    client = AsyncMock()
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": "awaiting_translation_review",
+        "workflow_type": "transcribe_translate",
+        "embed_source": False,
+        "embed_translated": True,
+        "review_gate": True,
+        "target_languages": ["es"],
+        "target_language_names": ["Spanish"],
+        "source_text_length": 500,
+        "duration_ms": 60_000,
+        "file_id": "F1",
+        "file_name": "clip.mp4",
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "task_uuid": "task-1",
+    }
+    store = dict(session)
+
+    async def _update(quote_id, updates):
+        store.update(updates)
+        return dict(store)
+
+    context = MagicMock()
+    with (
+        patch(
+            "app.slack.media_workflow_actions.media_quote_actor_may_continue",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "app.slack.media_workflow_actions._upload_slack_srt_to_file_server",
+            new=AsyncMock(return_value="fs-new-es"),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new=AsyncMock(side_effect=_update),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.post_media_quote_message",
+            new=AsyncMock(),
+        ) as mock_quote2,
+        patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        replaced = await apply_thread_srt_review_replace(
+            client=client,
+            session=session,
+            slack_file_id="F9",
+            uploaded_name="clip_Spanish.srt",
+            acting_user_id="U1",
+            language="es",
+            context=context,
+        )
+
+    assert replaced is True
+    assert store["approved_translated_srt_file_id"] == "fs-new-es"
+    assert store["stage"] == "awaiting_translation_review"
+    mock_quote2.assert_not_awaited()
+    posted = str(client.chat_postMessage.await_args_list)
+    assert "Click *Approve & Continue* when you are ready" in posted
 
 
 @pytest.mark.asyncio
@@ -1223,12 +1373,11 @@ async def test_replace_modal_accepts_differently_named_srt():
         mock_redis.delete = AsyncMock()
         await handle_media_srt_replace_submit(view=view, client=client, context=context)
 
-    updates = mock_update.await_args.args[1]
+    updates = {}
+    for call in mock_update.await_args_list:
+        updates.update(call.args[1])
     assert updates["approved_source_srt_file_id"] == "fs-replaced"
-    assert updates["transcript_zip_entries"] == [
-        {"file_id": "fs-replaced", "filename": "clip.srt"},
-        {"file_id": "docx-1", "filename": "clip.docx"},
-    ]
+    assert "transcript_zip_entries" not in updates
 
 
 @pytest.mark.asyncio

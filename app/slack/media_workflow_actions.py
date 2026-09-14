@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -21,9 +23,8 @@ from app.media.media_workflow import (
     advance_media_workflow,
     media_workflow_session_from_quote,
 )
-from app.media.transcript_zip import transcript_zip_session_updates
 from app.ray.settings import get_auto_translate_language_name
-from app.ray.utils import upload_to_file_server
+from app.ray.utils import download_from_file_server_async, upload_to_file_server
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
 from app.slack.media_configure_embed import TranslatedSrtLanguageRequired
@@ -53,9 +54,10 @@ from app.slack.templates.messages import (
     MediaSrtReviewMessage,
     MediaSrtReviewSubmittedMessage,
 )
-from app.slack.transcript_zip_delivery import post_deferred_word_transcript
-from app.slack.web import download_file
+from app.slack.web import download_file, upload_file_to_slack_memory_efficient
 from app.translate import _
+
+logger = logging.getLogger(__name__)
 
 
 class MediaSrtReplaceFailed(Exception):
@@ -63,6 +65,53 @@ class MediaSrtReplaceFailed(Exception):
         super().__init__("Could not store the replacement SRT on the file server")
         self.cause = cause
         self.__cause__ = cause
+
+
+async def post_deferred_word_transcript(
+    client: AsyncWebClient,
+    *,
+    word_file_id: str,
+    word_file_name: str,
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    """Upload a Word transcript withheld until its SRT was approved.
+
+    Best-effort: a failure is logged and swallowed so the approval workflow
+    never fails because of the Word extra.
+    """
+    word_path: str | None = None
+    try:
+        word_output = await download_from_file_server_async(word_file_id)
+        word_path = word_output.get("file") if isinstance(word_output, dict) else None
+        if not word_path or not os.path.exists(word_path):
+            raise RuntimeError(
+                f"File-server download returned no path for {word_file_id=}"
+            )
+        word_dir = os.path.dirname(word_path)
+        renamed_word_path = os.path.join(word_dir, word_file_name)
+        if word_path != renamed_word_path:
+            os.rename(word_path, renamed_word_path)
+            word_path = renamed_word_path
+        await upload_file_to_slack_memory_efficient(
+            client=client,
+            file_path=word_path,
+            channel_id=channel_id,
+            title=word_file_name,
+            filename=word_file_name,
+            thread_ts=thread_ts,
+        )
+    except Exception:
+        logger.exception(
+            "Deferred Word transcript upload failed; SRT already approved",
+            extra={"word_file_id": word_file_id},
+        )
+    finally:
+        try:
+            if word_path and os.path.exists(word_path):
+                os.unlink(word_path)
+        except OSError:
+            pass
 
 
 def thread_srt_matches_review_file(
@@ -228,20 +277,37 @@ async def apply_thread_srt_review_replace(
         if event is MediaWorkflowEvent.TRANSLATED_SRT_REPLACED:
             if replaced_language:
                 updates["approved_translated_srt_language"] = replaced_language
-        zip_name = f"{Path(str(session.get('file_name') or 'media')).stem}.srt"
-        if event is MediaWorkflowEvent.TRANSLATED_SRT_REPLACED:
-            language = (
-                replaced_language or ((session.get("target_languages") or [None])[0])
-            )
-            if language:
-                zip_name = (
-                    f"{Path(str(session.get('file_name') or 'media')).stem}_"
-                    f"{get_auto_translate_language_name(str(language))}.srt"
-                )
-        updates.update(
-            transcript_zip_session_updates(session, [(file_server_id, zip_name)])
-        )
         await update_media_quote_session(quote_id, updates)
+        if event is MediaWorkflowEvent.SOURCE_SRT_REPLACED:
+            auto_workflow = media_workflow_session_from_quote({**session, **updates})
+            if auto_workflow is None:
+                notify_exception(
+                    MediaWorkflowTransitionError(
+                        workflow.stage, MediaWorkflowEvent.SOURCE_SRT_APPROVED
+                    )
+                )
+            else:
+                try:
+                    auto_decision = advance_media_workflow(
+                        auto_workflow, MediaWorkflowEvent.SOURCE_SRT_APPROVED
+                    )
+                except MediaWorkflowTransitionError as exc:
+                    notify_exception(exc)
+                    auto_decision = None
+                if auto_decision is not None:
+                    completed = await _complete_source_approval(
+                        client, {**session, **updates}, auto_decision
+                    )
+                    if completed is not None:
+                        await client.chat_postMessage(
+                            channel=str(session["channel_id"]),
+                            text=_(
+                                "Replacement file received. Continuing with "
+                                "your updated subtitles."
+                            ),
+                            thread_ts=session.get("thread_ts"),
+                        )
+                        return True
         await client.chat_postMessage(
             channel=str(session["channel_id"]),
             text=_(
@@ -274,6 +340,37 @@ async def _post_deferred_word_transcript_if_needed(
         str(session["quote_id"]),
         {"deferred_word_file_id": None, "deferred_word_file_name": None},
     )
+
+
+async def _complete_source_approval(
+    client: AsyncWebClient,
+    session: dict[str, Any],
+    decision: MediaWorkflowDecision,
+) -> dict[str, Any] | None:
+    """Run the source-approval follow-on shared by Approve and auto-advance.
+
+    Returns the updated session, or None when the follow-on posted its own
+    error message and the caller should stop.
+    """
+    try:
+        updated = await execute_media_workflow_decision(
+            client=client,
+            session=session,
+            decision=decision,
+        )
+    except TranslatedSrtLanguageRequired:
+        await client.chat_postMessage(
+            channel=str(session.get("channel_id") or ""),
+            text=_(
+                "We couldn't tell which subtitle that replacement belongs to. "
+                "Use *Edit and reupload* under the file you edited."
+            ),
+            thread_ts=session.get("thread_ts"),
+        )
+        return None
+    await _post_deferred_word_transcript_if_needed(client, session)
+    await _clear_srt_review_actions(client, session, translated=False)
+    return updated
 
 
 async def handle_media_srt_approve_continue(
@@ -337,6 +434,9 @@ async def handle_media_srt_approve_continue(
                 ),
             )
             return
+        if event is MediaWorkflowEvent.SOURCE_SRT_APPROVED:
+            await _complete_source_approval(client, session, decision)
+            return
         try:
             await execute_media_workflow_decision(
                 client=client,
@@ -352,8 +452,6 @@ async def handle_media_srt_approve_continue(
                 ),
             )
             return
-        if event is MediaWorkflowEvent.SOURCE_SRT_APPROVED:
-            await _post_deferred_word_transcript_if_needed(client, session)
         await _clear_srt_review_actions(client, session, translated=translated)
     finally:
         await redis_conn.delete(lock_key)
@@ -485,10 +583,8 @@ async def execute_media_workflow_decision(
             )
     if MediaWorkflowCommand.MARK_DONE in decision.commands:
         from app.ray.events.media_pipeline_events import update_submission_status
-        from app.slack.transcript_zip_delivery import post_transcript_zip_if_needed
 
         await update_submission_status(updated)
-        await post_transcript_zip_if_needed(client, updated)
     return updated
 
 

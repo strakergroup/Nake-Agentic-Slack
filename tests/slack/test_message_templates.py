@@ -1349,6 +1349,7 @@ class TestMediaSrtReviewMessage:
         dumped = json.dumps(message.blocks)
         assert "Approve & Continue" in dumped
         assert "Edit and reupload" in dumped
+        assert "Either press" in dumped
         assert "SRT" not in dumped
 
     def test_translated_approve_uses_single_ai_translated_message(self):
@@ -1357,6 +1358,7 @@ class TestMediaSrtReviewMessage:
         assert "Your file is AI translated and can be downloaded above." in dumped
         assert "Edit and reupload" in dumped
         assert "Approve & Continue" in dumped
+        assert "Either press" in dumped
         assert "Review *" not in dumped
         assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
         assert not _blocks_contain_action(message.blocks, "media_srt_replace")

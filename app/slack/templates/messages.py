@@ -3302,13 +3302,13 @@ class MediaSrtApproveContinueMessage(SlackMessage):
         if translated:
             review_text = _(
                 "Your file is AI translated and can be downloaded above.\n"
-                "You can *Edit and reupload* a subtitle file before continuing.\n"
-                "When you are ready, *Approve & Continue* to submit this review."
+                "Either press *Edit and reupload* to edit and replace a subtitle file,\n"
+                "or press *Approve & Continue* to submit this review."
             )
         else:
             review_text = _(
-                "You can *Edit and reupload* the transcript before continuing.\n"
-                "When you are ready, *Approve & Continue* to submit this review."
+                "Either press *Edit and reupload* to edit and replace the transcript,\n"
+                "or press *Approve & Continue* to submit this review."
             )
         review_section = SectionBlock(text=MarkdownTextObject(text=review_text))
         actions = ActionsBlock(elements=[approve_button])
