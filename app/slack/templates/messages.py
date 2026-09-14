@@ -3389,7 +3389,7 @@ class JobTranscribedEventMessage(SlackMessage):
             SectionBlock(
                 text=MarkdownTextObject(
                     text=_(
-                        "We have transcribed your file and the transcript can be downloaded."
+                        "We have transcribed your file(s) and the transcript can be downloaded."
                     )
                 )
             )

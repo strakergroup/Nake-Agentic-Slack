@@ -251,7 +251,7 @@ def media_quote_intro_text(session: dict[str, Any]) -> str:
     ):
         return _(
             "To estimate the cost of AI translation, your source file(s) must first "
-            "be transcribed. The following transcription service charges will apply:"
+            "be transcribed. The following transcription service charge will apply:"
         )
     return _("Review the quote below and click *Accept Quote* to continue.")
 

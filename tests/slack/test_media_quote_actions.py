@@ -1301,3 +1301,18 @@ async def test_resume_translate_uses_replaced_source_srt():
 
     compiled = captured[0].compile()
     assert compiled.params.get("result_file_id") == "srt-replaced"
+
+
+def test_media_transcribe_wait_text_uses_file_plural():
+    from app.slack.media_quote_actions import media_transcribe_wait_text
+    from app.slack.media_quotes import (
+        PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
+    )
+
+    assert "file(s)" in media_transcribe_wait_text(PIPELINE_TRANSCRIBE)
+    assert "AI Translation quote" in media_transcribe_wait_text(
+        PIPELINE_TRANSCRIBE_TRANSLATE
+    )
+    assert "AI Translation quote" in media_transcribe_wait_text(
+        PIPELINE_TRANSCRIBE_TRANSLATE_EMBED
+    )

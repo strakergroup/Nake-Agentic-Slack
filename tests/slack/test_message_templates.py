@@ -27,6 +27,7 @@ from app.slack.templates.messages import (
     JobCreationMessage,
     JobStatusNoIdMessage,
     JobTargetsNoIdMessage,
+    JobTranscribedEventMessage,
     LoginMessage,
     LogoutMessage,
     MachineTranslationMessage,
@@ -1371,6 +1372,16 @@ class TestMediaSrtReviewMessage:
         assert "Subtitles approved." in dumped
         assert "Transcript approved." not in dumped
         assert "SRT" not in dumped
+
+
+class TestJobTranscribedEventMessage:
+    def test_transcribed_message_uses_file_plural(self):
+        message = JobTranscribedEventMessage(source_file_name="clip.mp4")
+        dumped = json.dumps(message.blocks)
+        assert (
+            "We have transcribed your file(s) and the transcript can be downloaded."
+            in dumped
+        )
 
 
 class TestBatchAndFileListMessages:

@@ -289,6 +289,17 @@ def _configure_quote_decision(session: dict[str, Any], event: MediaWorkflowEvent
     return advance_media_workflow(workflow, event)
 
 
+def media_transcribe_wait_text(pipeline_kind: str) -> str:
+    if pipeline_kind == PIPELINE_TRANSCRIBE:
+        return _(
+            ":stopwatch: Please wait a moment while we transcribe your file(s)."
+        )
+    return _(
+        ":stopwatch: Please wait a moment while we transcribe your file(s). "
+        "You will receive an AI Translation quote when transcription completes."
+    )
+
+
 async def accept_media_quote(
     *,
     client: AsyncWebClient,
@@ -409,9 +420,7 @@ async def accept_media_quote(
                 extra_data["submission_id"] = session["submission_id"]
             # First phase is always ASR-only; intended pipeline stored in quote session.
             db_pipeline = PIPELINE_TRANSCRIBE
-            wait_text = _(
-                ":stopwatch: Please wait a moment while we transcribe your file."
-            )
+            wait_text = media_transcribe_wait_text(pipeline_kind)
         elif pipeline_kind == PIPELINE_TRANSCRIBE_TRANSLATE:
             extra_data["target_languages"] = session.get("target_languages") or []
             extra_data["target_language_names"] = (
@@ -420,10 +429,7 @@ async def accept_media_quote(
             if session.get("submission_ids"):
                 extra_data["submission_ids"] = session["submission_ids"]
             db_pipeline = PIPELINE_TRANSCRIBE
-            wait_text = _(
-                ":stopwatch: Please wait a moment while we transcribe your file. "
-                "You will receive an AI Translation quote when transcription completes."
-            )
+            wait_text = media_transcribe_wait_text(pipeline_kind)
         elif pipeline_kind == PIPELINE_TRANSCRIBE_TRANSLATE_EMBED:
             extra_data["target_languages"] = session.get("target_languages") or []
             extra_data["target_language_names"] = (
@@ -435,10 +441,7 @@ async def accept_media_quote(
             extra_data["original_video_download_url"] = session["download_url"]
             extra_data["original_video_file_name"] = session["file_name"]
             db_pipeline = PIPELINE_TRANSCRIBE
-            wait_text = _(
-                ":stopwatch: Please wait a moment while we transcribe your file. "
-                "You will receive an AI Translation quote when transcription completes."
-            )
+            wait_text = media_transcribe_wait_text(pipeline_kind)
         elif pipeline_kind == PIPELINE_EMBED:
             for key in (
                 "original_video_file_id",

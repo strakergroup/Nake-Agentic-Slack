@@ -185,7 +185,7 @@ def test_media_quote1_intro_explains_transcription_before_ai_translate():
         actions=False,
     )
     assert "must first be transcribed" in blocks[1]["text"]["text"]
-    assert "transcription service charges will apply" in blocks[1]["text"]["text"]
+    assert "transcription service charge will apply" in blocks[1]["text"]["text"]
 
 
 def test_media_quote2_intro_matches_document_ai_copy():
