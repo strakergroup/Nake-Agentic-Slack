@@ -806,8 +806,15 @@ class TestVideoOptionsMessage:
         assert not _blocks_contain_action(message.blocks, "video_embed_subtitles")
         assert _blocks_contain_text(
             message.blocks,
-            "*Configure* - Choose transcription, translation, and embedding.",
+            "Press the *Select services* button to select the media service(s) needed.",
         )
+        accessory = next(
+            block["accessory"]
+            for block in message.blocks
+            if block.get("accessory", {}).get("action_id")
+            == "video_configure_media"
+        )
+        assert accessory["text"]["text"] == "Select services"
 
     def test_configure_payload_files_are_id_and_name_only(self):
         message = VideoOptionsMessage(

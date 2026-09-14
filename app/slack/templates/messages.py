@@ -3506,7 +3506,7 @@ class VideoOptionsMessage(SlackMessage):
             blocks.append(token_context)
 
         configure_button = ButtonElement(
-            text=PlainTextObject(text=_("Configure"), emoji=True),
+            text=PlainTextObject(text=_("Select services"), emoji=True),
             action_id="video_configure_media",
             value=action_value,
             style="primary",
@@ -3514,7 +3514,7 @@ class VideoOptionsMessage(SlackMessage):
         configure_section = SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "*Configure* - Choose transcription, translation, and embedding."
+                    "Press the *Select services* button to select the media service(s) needed."
                 )
             ),
             accessory=configure_button,
