@@ -291,9 +291,7 @@ def _configure_quote_decision(session: dict[str, Any], event: MediaWorkflowEvent
 
 def media_transcribe_wait_text(pipeline_kind: str) -> str:
     if pipeline_kind == PIPELINE_TRANSCRIBE:
-        return _(
-            ":stopwatch: Please wait a moment while we transcribe your file(s)."
-        )
+        return _(":stopwatch: Please wait a moment while we transcribe your file(s).")
     return _(
         ":stopwatch: Please wait a moment while we transcribe your file(s). "
         "You will receive an AI Translation quote when transcription completes."
