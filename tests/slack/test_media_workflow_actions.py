@@ -689,6 +689,69 @@ async def test_approve_source_srt_posts_quote2_for_translate_workflow():
 
 
 @pytest.mark.asyncio
+async def test_approve_source_srt_quote2_includes_source_embed_when_selected():
+    from app.slack.media_workflow_actions import handle_media_srt_approve_continue
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {"user_id": "U1", "team_id": "T1"}[key]
+    context.get = lambda key, default=None: None
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": "awaiting_source_review",
+        "workflow_type": "transcribe_translate",
+        "embed_source": True,
+        "embed_translated": True,
+        "review_gate": True,
+        "target_languages": ["es"],
+        "target_language_names": ["Spanish"],
+        "source_text_length": 500,
+        "duration_ms": 60_000,
+        "file_id": "F1",
+        "file_name": "clip.mp4",
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+    }
+    with (
+        patch(
+            "app.slack.media_workflow_actions.get_media_quote_session",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ) as mock_update,
+        patch(
+            "app.slack.media_workflow_actions.post_media_quote_message",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.slack.media_workflow_actions.auto_accept_media_translation_quote_if_needed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        await handle_media_srt_approve_continue(
+            client=client,
+            action={"value": "q1"},
+            context=context,
+        )
+
+    line_items = mock_update.await_args.args[1]["line_items"]
+    labels = [item["label"] for item in line_items]
+    assert labels.index("Source subtitle embedding") < labels.index(
+        "Translated subtitle embedding"
+    )
+
+
+@pytest.mark.asyncio
 async def test_approve_source_srt_skips_when_quote_lock_held():
     from app.slack.media_workflow_actions import handle_media_srt_approve_continue
 

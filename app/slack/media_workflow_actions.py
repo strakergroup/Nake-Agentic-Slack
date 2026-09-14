@@ -362,6 +362,7 @@ async def execute_media_workflow_decision(
             source_text_length=length,
             target_count=len(targets) or 1,
             duration_ms=int(duration_ms or session.get("duration_ms") or 0),
+            embed_source=bool(session.get("embed_source")),
             embed_translated=bool(session.get("embed_translated")),
         )
         quote_seed = {
