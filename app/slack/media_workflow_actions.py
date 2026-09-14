@@ -53,6 +53,7 @@ from app.slack.templates.messages import (
     MediaSrtReviewMessage,
     MediaSrtReviewSubmittedMessage,
 )
+from app.slack.transcript_zip_delivery import post_deferred_word_transcript
 from app.slack.web import download_file
 from app.translate import _
 
@@ -253,6 +254,28 @@ async def apply_thread_srt_review_replace(
         await redis_conn.delete(lock_key)
 
 
+async def _post_deferred_word_transcript_if_needed(
+    client: AsyncWebClient,
+    session: dict[str, Any],
+) -> None:
+    """Upload a Word transcript withheld until its SRT was approved."""
+    word_file_id = session.get("deferred_word_file_id")
+    word_file_name = session.get("deferred_word_file_name")
+    if not word_file_id or not word_file_name:
+        return
+    await post_deferred_word_transcript(
+        client,
+        word_file_id=str(word_file_id),
+        word_file_name=str(word_file_name),
+        channel_id=str(session.get("channel_id") or ""),
+        thread_ts=session.get("thread_ts"),
+    )
+    await update_media_quote_session(
+        str(session["quote_id"]),
+        {"deferred_word_file_id": None, "deferred_word_file_name": None},
+    )
+
+
 async def handle_media_srt_approve_continue(
     *,
     client: AsyncWebClient,
@@ -329,6 +352,8 @@ async def handle_media_srt_approve_continue(
                 ),
             )
             return
+        if event is MediaWorkflowEvent.SOURCE_SRT_APPROVED:
+            await _post_deferred_word_transcript_if_needed(client, session)
         await _clear_srt_review_actions(client, session, translated=translated)
     finally:
         await redis_conn.delete(lock_key)

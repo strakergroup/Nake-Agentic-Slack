@@ -27,6 +27,53 @@ class TranscriptZipDeliveryFailed(Exception):
         self.__cause__ = cause
 
 
+async def post_deferred_word_transcript(
+    client: AsyncWebClient,
+    *,
+    word_file_id: str,
+    word_file_name: str,
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    """Upload a Word transcript withheld until its SRT was approved.
+
+    Best-effort: a failure is logged and swallowed so the approval workflow
+    never fails because of the Word extra.
+    """
+    word_path: str | None = None
+    try:
+        word_output = await download_from_file_server_async(word_file_id)
+        word_path = word_output.get("file") if isinstance(word_output, dict) else None
+        if not word_path or not os.path.exists(word_path):
+            raise RuntimeError(
+                f"File-server download returned no path for {word_file_id=}"
+            )
+        word_dir = os.path.dirname(word_path)
+        renamed_word_path = os.path.join(word_dir, word_file_name)
+        if word_path != renamed_word_path:
+            os.rename(word_path, renamed_word_path)
+            word_path = renamed_word_path
+        await upload_file_to_slack_memory_efficient(
+            client=client,
+            file_path=word_path,
+            channel_id=channel_id,
+            title=word_file_name,
+            filename=word_file_name,
+            thread_ts=thread_ts,
+        )
+    except Exception:
+        logger.exception(
+            "Deferred Word transcript upload failed; SRT already approved",
+            extra={"word_file_id": word_file_id},
+        )
+    finally:
+        try:
+            if word_path and os.path.exists(word_path):
+                os.unlink(word_path)
+        except OSError:
+            pass
+
+
 async def post_transcript_zip_if_needed(
     client: AsyncWebClient, session: Mapping[str, Any]
 ) -> None:

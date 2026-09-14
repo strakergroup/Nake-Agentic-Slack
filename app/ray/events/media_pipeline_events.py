@@ -778,6 +778,18 @@ async def handle_transcription_complete(
             word_file_name = (
                 f"{Path(result_file_name).stem}.docx" if word_file_id else None
             )
+            if srt_review_quote_id and word_file_id and word_file_name:
+                # Review pending: withhold the Word transcript until the SRT
+                # is approved, then deliver it from the approval handler.
+                await update_media_quote_session(
+                    srt_review_quote_id,
+                    {
+                        "deferred_word_file_id": str(word_file_id),
+                        "deferred_word_file_name": word_file_name,
+                    },
+                )
+                word_file_id = None
+                word_file_name = None
             if extra_data.get("workflow_type") and quote_id:
                 zip_session = (
                     review_session
@@ -807,53 +819,6 @@ async def handle_transcription_complete(
                 word_file_id=word_file_id,
                 word_file_name=word_file_name,
             )
-
-
-async def _upload_translated_word_transcript(
-    client: AsyncWebClient,
-    *,
-    word_file_id: str,
-    title: str,
-    channel_id: str,
-    thread_ts: str | None,
-) -> None:
-    """Best-effort Word transcript upload after a translated SRT (RAY-81850).
-
-    A failure is logged and swallowed so the SRT delivery and review buttons
-    still proceed and the media quote is never failed by the Word extra.
-    """
-    word_path: str | None = None
-    try:
-        word_output = await download_from_file_server_async(word_file_id)
-        word_path = word_output.get("file")
-        if not word_path:
-            raise RuntimeError(
-                f"File-server download returned no path for word_file_id={word_file_id}"
-            )
-        temp_dir = os.path.dirname(word_path)
-        renamed_word_path = os.path.join(temp_dir, title)
-        if word_path != renamed_word_path:
-            os.rename(word_path, renamed_word_path)
-            word_path = renamed_word_path
-        await upload_file_to_slack_memory_efficient(
-            client=client,
-            file_path=word_path,
-            channel_id=channel_id,
-            title=title,
-            filename=title,
-            thread_ts=thread_ts,
-        )
-    except Exception:
-        logger.exception(
-            "Word transcript upload failed; SRT already delivered",
-            extra={"word_file_id": word_file_id, "title": title},
-        )
-    finally:
-        try:
-            if word_path and os.path.exists(word_path):
-                os.unlink(word_path)
-        except OSError:
-            pass
 
 
 async def handle_translation_complete(
@@ -891,9 +856,6 @@ async def handle_translation_complete(
     original_stem = original_path.stem
     uploaded_count = 0
     zip_files: list[tuple[str, str]] = []
-    word_translated_file_ids = (
-        _task_extra_data(task_info).get("word_translated_file_ids") or {}
-    )
 
     for target_lang, file_id in translated_file_ids.items():
         try:
@@ -921,17 +883,6 @@ async def handle_translation_complete(
             )
             uploaded_count += 1
             zip_files.append((str(file_id), title))
-            word_file_id = word_translated_file_ids.get(target_lang)
-            if word_file_id:
-                word_title = f"{original_stem}_{lang_name}.docx"
-                zip_files.append((str(word_file_id), word_title))
-                await _upload_translated_word_transcript(
-                    client,
-                    word_file_id=str(word_file_id),
-                    title=word_title,
-                    channel_id=channel_id,
-                    thread_ts=effective_thread_ts,
-                )
             extra = _task_extra_data(task_info)
             quote_id = extra.get("media_quote_id")
             if extra.get("workflow_type") and quote_id:

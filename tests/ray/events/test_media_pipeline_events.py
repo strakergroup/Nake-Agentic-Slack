@@ -114,6 +114,68 @@ async def test_handle_transcription_complete_passes_word_source_file():
 
 
 @pytest.mark.asyncio
+async def test_handle_transcription_complete_withholds_word_when_review_pending():
+    from app.ray.events.media_pipeline_events import handle_transcription_complete
+
+    client = AsyncMock()
+    task_info = SimpleNamespace(
+        task_uuid="task-1",
+        file_name="clip.mp4",
+        pipeline_type="transcribe",
+        extra_data={
+            "media_quote_id": "q1",
+            "workflow_type": "transcribe_translate",
+            "embed_source": True,
+            "word_source_file_id": "docx-1",
+            "slack_team_id": "T1",
+            "slack_user_id": "U1",
+        },
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(ray_client_id="client-1"))
+    auth_slack_user = SimpleNamespace(channel_id="C1")
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.post_notification",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.enqueue_transcription_upload",
+            new=AsyncMock(),
+        ) as mock_enqueue,
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value={"workflow_type": "transcribe_translate"}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new=AsyncMock(),
+        ) as mock_update,
+    ):
+        await handle_transcription_complete(
+            client,
+            "file-1",
+            "clip.srt",
+            task_info,
+            False,
+            "C1",
+            "123.456",
+            MagicMock(),
+            auth,
+            auth_slack_user,
+        )
+
+    mock_enqueue.assert_awaited_once()
+    assert mock_enqueue.await_args.kwargs.get("word_file_id") is None
+    assert mock_enqueue.await_args.kwargs.get("word_file_name") is None
+    deferred = {}
+    for call in mock_update.await_args_list:
+        deferred.update(call.args[1])
+    assert deferred.get("deferred_word_file_id") == "docx-1"
+    assert deferred.get("deferred_word_file_name") == "clip.docx"
+
+
+@pytest.mark.asyncio
 async def test_handle_transcription_complete_records_transcript_zip_entries():
     from app.ray.events.media_pipeline_events import handle_transcription_complete
 
@@ -831,16 +893,14 @@ async def test_handle_translation_complete_posts_success_after_upload(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_handle_translation_complete_uploads_word_after_each_srt(tmp_path):
+async def test_handle_translation_complete_uploads_srt_only_without_word(tmp_path):
     from app.ray.events.media_pipeline_events import handle_translation_complete
 
     srt = tmp_path / "es.srt"
     srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
-    docx = tmp_path / "es.docx"
-    docx.write_bytes(b"fake-docx")
 
     async def _download(file_id: str) -> dict[str, str]:
-        return {"file": str(srt) if file_id == "file-es" else str(docx)}
+        return {"file": str(srt)}
 
     client = AsyncMock()
     client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
@@ -877,9 +937,9 @@ async def test_handle_translation_complete_uploads_word_after_each_srt(tmp_path)
 
     assert uploaded == 1
     downloaded_ids = [c.args[0] for c in mock_download.await_args_list]
-    assert downloaded_ids == ["file-es", "docx-es"]
+    assert downloaded_ids == ["file-es"]
     filenames = [c.kwargs["filename"] for c in mock_upload.await_args_list]
-    assert filenames == ["clip_Spanish.srt", "clip_Spanish.docx"]
+    assert filenames == ["clip_Spanish.srt"]
 
 
 @pytest.mark.asyncio
@@ -951,21 +1011,15 @@ async def test_handle_translation_complete_records_transcript_zip_entries(tmp_pa
     assert zip_updates[-1]["transcript_zip_entries"] == [
         {"file_id": "file-1", "filename": "clip.srt"},
         {"file_id": "file-es", "filename": "clip_Spanish.srt"},
-        {"file_id": "docx-es", "filename": "clip_Spanish.docx"},
     ]
 
 
 @pytest.mark.asyncio
-async def test_handle_translation_complete_word_failure_still_posts_success(tmp_path):
+async def test_handle_translation_complete_ignores_translated_word_ids(tmp_path):
     from app.ray.events.media_pipeline_events import handle_translation_complete
 
     srt = tmp_path / "es.srt"
     srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
-
-    async def _download(file_id: str) -> dict[str, str]:
-        if file_id == "docx-es":
-            raise RuntimeError("file server down")
-        return {"file": str(srt)}
 
     client = AsyncMock()
     client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
@@ -981,8 +1035,8 @@ async def test_handle_translation_complete_word_failure_still_posts_success(tmp_
     with (
         patch(
             "app.ray.events.media_pipeline_events.download_from_file_server_async",
-            new=AsyncMock(side_effect=_download),
-        ),
+            new=AsyncMock(return_value={"file": str(srt)}),
+        ) as mock_download,
         patch(
             "app.ray.events.media_pipeline_events.get_auto_translate_language_name",
             return_value="Spanish",
@@ -995,16 +1049,18 @@ async def test_handle_translation_complete_word_failure_still_posts_success(tmp_
             "app.ray.events.media_pipeline_events.show_tokens_message",
             new=AsyncMock(),
         ),
-        patch("app.ray.events.media_pipeline_events.logger") as mock_logger,
     ):
         uploaded = await handle_translation_complete(
             client, "C1", "123.456", task_info, auth
         )
 
-    # SRT delivery counts as success; the Word failure is logged, not fatal.
+    # SRT delivery counts as success; translated Word ids are ignored.
     assert uploaded == 1
     assert mock_upload.await_count == 1
-    assert mock_logger.exception.called
+    assert [c.args[0] for c in mock_download.await_args_list] == ["file-es"]
+    assert [c.kwargs["filename"] for c in mock_upload.await_args_list] == [
+        "clip_Spanish.srt"
+    ]
     texts = [
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
