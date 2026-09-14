@@ -693,6 +693,34 @@ class TestVideoConfigureMediaModal:
         assert metadata["thread_ts"] == "123.456"
         assert metadata["show_embed_option"] is True
 
+    def test_service_selection_copy_and_file_first_order(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C1",
+            files=self._files(),
+        )
+        assert modal["title"]["text"] == "Service selection"
+        dumped = json.dumps(modal)
+        assert (
+            "select an extra transcript output format (in addition to SRT)"
+            in dumped
+        )
+        input_ids = [
+            block.get("block_id")
+            for block in modal["blocks"]
+            if block.get("block_id")
+        ]
+        assert input_ids.index("selected_file") < input_ids.index("workflow_type")
+        assert (
+            _modal_block(modal, "selected_file")["label"]["text"]
+            == "File(s) to process"
+        )
+        assert (
+            _modal_block(modal, "word_transcript")["label"]["text"]
+            == "Native transcript copy"
+        )
+
     def test_workflow_type_dispatches_for_views_update(self):
         from app.slack.templates.views import video_configure_media_modal
 

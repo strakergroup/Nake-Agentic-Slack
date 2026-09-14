@@ -1477,9 +1477,21 @@ def video_configure_media_modal(
             text=MarkdownTextObject(
                 text=_(
                     "Choose how to process your media file(s). You can transcribe only, "
-                    "or transcribe and translate, and optionally embed subtitles."
+                    "or transcribe and translate, and optionally embed subtitles "
+                    "and select an extra transcript output format (in addition to SRT)."
                 )
             )
+        ),
+        InputBlock(
+            block_id="selected_file",
+            label=PlainTextObject(text=_("File(s) to process")),
+            element=StaticMultiSelectElement(
+                action_id="file_display",
+                placeholder=PlainTextObject(text=_("Selected files")),
+                options=file_options,
+                initial_options=initial_file_options or None,
+            ),
+            optional=False,
         ),
         InputBlock(
             block_id="workflow_type",
@@ -1490,17 +1502,6 @@ def video_configure_media_modal(
                 options=[transcribe_only, transcribe_translate],
                 initial_option=workflow_initial,
             ),
-        ),
-        InputBlock(
-            block_id="selected_file",
-            label=PlainTextObject(text=_("Select your files to process")),
-            element=StaticMultiSelectElement(
-                action_id="file_display",
-                placeholder=PlainTextObject(text=_("Selected files")),
-                options=file_options,
-                initial_options=initial_file_options or None,
-            ),
-            optional=False,
         ),
     ]
     if show_translate_options:
@@ -1561,7 +1562,7 @@ def video_configure_media_modal(
     blocks.append(
         InputBlock(
             block_id="word_transcript",
-            label=PlainTextObject(text=_("Word transcript")),
+            label=PlainTextObject(text=_("Native transcript copy")),
             optional=True,
             element=StaticSelectElement(
                 action_id="word_transcript_format",
@@ -1582,7 +1583,7 @@ def video_configure_media_modal(
                 "show_embed_option": show_embed_option,
             }
         ),
-        "title": {"type": "plain_text", "text": _("Configure media")[:24]},
+        "title": {"type": "plain_text", "text": _("Service selection")[:24]},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "blocks": [block.to_dict() for block in blocks],
@@ -1666,7 +1667,7 @@ def video_embed_subtitles_modal(
     blocks.append(
         InputBlock(
             block_id="selected_file",
-            label=PlainTextObject(text=_("Select your files to process")),
+            label=PlainTextObject(text=_("File(s) to process")),
             element=StaticMultiSelectElement(
                 action_id="file_display",
                 placeholder=PlainTextObject(text=_("Selected files")),
