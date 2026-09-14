@@ -864,7 +864,7 @@ def media_translation_quote_blocks(
         status_message=status_message,
         is_ibm=is_ibm_enterprise(session.get("enterprise_id")),
         language_costs=language_costs or None,
-        intro_text=_("Running the AI translation will incur the following cost:"),
+        intro_text="",
         additional_label=(_("Translated subtitle embedding") if embed_tokens else None),
         additional_detail=(
             translated_embed_language_detail(len(selected_languages))
@@ -1062,15 +1062,18 @@ def evaluation_credits_quote_blocks(
             "type": "header",
             "text": {"type": "plain_text", "text": _("Service Quote"), "emoji": True},
         },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": intro_text,
-            },
-        },
-        {"type": "divider"},
     ]
+    if intro_text:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": intro_text,
+                },
+            }
+        )
+    blocks.append({"type": "divider"})
     # PDF conversion runs first in the workflow, so list it above AI Translation.
     total_tokens = token_cost
     if pdf_tokens and pdf_page_count:

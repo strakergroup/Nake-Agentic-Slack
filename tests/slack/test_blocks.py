@@ -313,7 +313,7 @@ class TestMediaTranslationQuoteBlocks:
             "media_translation_quote_accept",
         ]
         rendered = str(blocks)
-        assert "Running the AI translation will incur the following cost:" in rendered
+        assert "Running the AI translation will incur the following cost:" not in rendered
         assert "Adjust Request" in rendered
         assert "product-demo.mp4" in rendered
         assert "Spanish" in rendered

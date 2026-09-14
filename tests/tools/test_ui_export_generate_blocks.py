@@ -91,7 +91,7 @@ def test_media_quote_catalog_entries_include_stage_copy():
         == "MediaQuoteMessage (Quote2 AI Translation after transcription)"
     )
     assert "must first be transcribed" in str(quote1["blocks"])
-    assert "Running the AI translation will incur the following cost:" in str(
+    assert "Running the AI translation will incur the following cost:" not in str(
         quote2["blocks"]
     )
 

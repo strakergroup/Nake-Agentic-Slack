@@ -188,7 +188,7 @@ def test_media_quote1_intro_explains_transcription_before_ai_translate():
     assert "transcription service charge will apply" in blocks[1]["text"]["text"]
 
 
-def test_media_quote2_intro_matches_document_ai_copy():
+def test_media_quote2_omits_translation_intro():
     from app.slack.templates.blocks import media_translation_quote_blocks
 
     session = {
@@ -204,10 +204,11 @@ def test_media_quote2_intro_matches_document_ai_copy():
         "total_tokens": 50,
     }
     blocks = media_translation_quote_blocks(session, actions=False)
-    assert (
-        blocks[1]["text"]["text"]
-        == "Running the AI translation will incur the following cost:"
+    assert "Running the AI translation will incur the following cost:" not in str(
+        blocks
     )
+    assert blocks[0]["type"] == "header"
+    assert blocks[1]["type"] == "divider"
 
 
 def test_media_quote_blocks_always_show_usd():

@@ -244,7 +244,7 @@ def media_quote_intro_text(session: dict[str, Any]) -> str:
     stage = session.get("stage")
     pipeline_kind = session.get("pipeline_kind")
     if stage == STAGE_AWAITING_TRANSLATION_ACCEPT:
-        return _("Running the AI translation will incur the following cost:")
+        return ""
     if pipeline_kind in (
         PIPELINE_TRANSCRIBE_TRANSLATE,
         PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
@@ -277,15 +277,19 @@ def media_quote_blocks(
             "type": "header",
             "text": {"type": "plain_text", "text": _("Service Quote"), "emoji": True},
         },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": media_quote_intro_text(session),
-            },
-        },
-        {"type": "divider"},
     ]
+    intro_text = media_quote_intro_text(session)
+    if intro_text:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": intro_text,
+                },
+            }
+        )
+    blocks.append({"type": "divider"})
 
     file_name = session.get("file_name")
     if file_name:
