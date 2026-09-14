@@ -90,11 +90,22 @@ def test_quote1_line_items_embed_only():
     assert items[0]["tokens"] == 30
 
 
-def test_quote1_includes_source_embed_for_one_language_when_flag_set():
+def test_quote1_omits_source_embed_for_translate_pipeline_even_when_flag_set():
     items = build_quote1_line_items(
         pipeline_kind=PIPELINE_TRANSCRIBE_TRANSLATE,
         duration_ms=60_000,
         target_count=3,
+        embed_source=True,
+    )
+    assert [item["label"] for item in items] == ["Transcription"]
+    assert items[0]["tokens"] == 100
+
+
+def test_quote1_keeps_source_embed_for_transcribe_only_when_flag_set():
+    items = build_quote1_line_items(
+        pipeline_kind=PIPELINE_TRANSCRIBE,
+        duration_ms=60_000,
+        target_count=1,
         embed_source=True,
     )
     assert [item["label"] for item in items] == [
@@ -140,6 +151,39 @@ def test_quote2_omits_translated_embed_when_flag_false():
     )
     assert len(items) == 1
     assert items[0]["tokens"] == media_translation_tokens(1000, 2)
+
+
+def test_quote2_includes_source_embed_before_translated_embed():
+    items = build_quote2_line_items(
+        source_text_length=1000,
+        target_count=2,
+        duration_ms=60_000,
+        embed_source=True,
+        embed_translated=True,
+    )
+    assert [item["label"] for item in items] == [
+        "AI Translation",
+        "Source subtitle embedding",
+        "Translated subtitle embedding",
+    ]
+    assert items[0]["tokens"] == media_translation_tokens(1000, 2)
+    assert items[1]["tokens"] == 30
+    assert items[2]["tokens"] == 60
+
+
+def test_quote2_includes_source_embed_without_translated_embed():
+    items = build_quote2_line_items(
+        source_text_length=1000,
+        target_count=2,
+        duration_ms=60_000,
+        embed_source=True,
+        embed_translated=False,
+    )
+    assert [item["label"] for item in items] == [
+        "AI Translation",
+        "Source subtitle embedding",
+    ]
+    assert items[1]["tokens"] == 30
 
 
 def test_media_quote_blocks_include_accept_cancel():

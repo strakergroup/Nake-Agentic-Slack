@@ -155,6 +155,13 @@ def translated_embed_tokens_for_session(
     )
 
 
+def source_embed_tokens_for_session(session: dict[str, Any]) -> int:
+    """Mux tokens for Quote2 source embedding (single source language)."""
+    if not session.get("embed_source"):
+        return 0
+    return embedding_tokens_for_duration(int(session.get("duration_ms") or 0), 1)
+
+
 def translated_embed_language_detail(language_count: int) -> str:
     """Singular or plural language copy for Quote2 translated embed rows."""
     if language_count == 1:
@@ -169,7 +176,13 @@ def build_quote1_line_items(
     target_count: int,
     embed_source: bool | None = None,
 ) -> list[dict[str, Any]]:
-    """Priced line items for Quote1 (transcription and/or source embedding)."""
+    """Priced line items for Quote1 (transcription and/or source embedding).
+
+    Explicit source embedding (``embed_source is True``) on a translate
+    pipeline is charged on Quote 2 instead. Transcribe-only and embed-only
+    pipelines have no Quote 2, so they keep the source embedding line, as do
+    legacy sessions without an explicit flag.
+    """
     items: list[dict[str, Any]] = []
     if pipeline_kind in (
         PIPELINE_TRANSCRIBE,
@@ -182,6 +195,12 @@ def build_quote1_line_items(
                 "tokens": transcription_tokens_for_duration(duration_ms),
             }
         )
+    if pipeline_kind in (
+        PIPELINE_TRANSCRIBE_TRANSLATE,
+        PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
+    ):
+        if embed_source is True:
+            return items
     include_source_embed = (
         embed_source
         if embed_source is not None
@@ -209,15 +228,23 @@ def build_quote2_line_items(
     source_text_length: int,
     target_count: int,
     duration_ms: int,
+    embed_source: bool = False,
     embed_translated: bool = False,
 ) -> list[dict[str, Any]]:
-    """Priced line items for Quote2 (AI translation and optional translated embed)."""
+    """Priced line items for Quote2 (AI translation and optional embedding)."""
     items: list[dict[str, Any]] = [
         {
             "label": _("AI Translation"),
             "tokens": media_translation_tokens(source_text_length, target_count or 1),
         }
     ]
+    if embed_source:
+        items.append(
+            {
+                "label": _("Source subtitle embedding"),
+                "tokens": embedding_tokens_for_duration(duration_ms, 1),
+            }
+        )
     if embed_translated:
         items.append(
             {
@@ -467,6 +494,7 @@ async def create_media_quote_session(
             source_text_length=source_text_length,
             target_count=len(target_languages) or 1,
             duration_ms=duration_ms,
+            embed_source=embed_source is True,
             embed_translated=embed_translated,
         )
     else:

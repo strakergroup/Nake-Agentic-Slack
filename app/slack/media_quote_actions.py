@@ -34,12 +34,11 @@ from app.models import ASRTask, TranscriptionTask, TranscriptionTaskData
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
-from app.slack.document_mt_quote_adjustment import document_mt_tokens_for_pairs
 from app.slack.media_configure_embed import resume_configure_embed_phase
 from app.slack.media_quote_adjustment import (
+    media_quote2_required_tokens,
     media_selected_target_language_names,
     media_selected_target_languages,
-    media_translation_quote_from_session,
     media_translation_quote_uses_adjust_layout,
 )
 from app.slack.media_quotes import (
@@ -63,7 +62,6 @@ from app.slack.media_quotes import (
     media_quote_blocks,
     media_quote_lock_key,
     translate_resume_pipeline_type,
-    translated_embed_tokens_for_session,
     update_media_quote_session,
 )
 from app.slack.middleware import require_ray_client
@@ -584,10 +582,7 @@ async def accept_media_translation_quote(
         required_tokens = int(session.get("total_tokens") or 0)
         if "selected_pairs" in session:
             pairs = [str(pair) for pair in session.get("selected_pairs") or []]
-            required_tokens = document_mt_tokens_for_pairs(
-                media_translation_quote_from_session(session),
-                pairs,
-            ) + translated_embed_tokens_for_session(session, language_count=len(pairs))
+            required_tokens = media_quote2_required_tokens(session, pairs)
         if not await _require_ai_token_balance(context, client, required_tokens):
             return False
 

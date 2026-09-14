@@ -23,6 +23,7 @@ from app.slack.media_quote_adjustment import (
     media_translation_quote_from_session,
 )
 from app.slack.media_quotes import (
+    source_embed_tokens_for_session,
     translated_embed_language_detail,
     translated_embed_tokens_for_session,
 )
@@ -849,6 +850,7 @@ def media_translation_quote_blocks(
     embed_tokens = translated_embed_tokens_for_session(
         session, language_count=len(selected_languages)
     )
+    source_tokens = source_embed_tokens_for_session(session)
 
     return evaluation_credits_quote_blocks(
         _("AI Translation"),
@@ -865,6 +867,9 @@ def media_translation_quote_blocks(
         is_ibm=is_ibm_enterprise(session.get("enterprise_id")),
         language_costs=language_costs or None,
         intro_text="",
+        source_label=(_("Source subtitle embedding") if source_tokens else None),
+        source_detail=(translated_embed_language_detail(1) if source_tokens else None),
+        source_tokens=source_tokens or None,
         additional_label=(_("Translated subtitle embedding") if embed_tokens else None),
         additional_detail=(
             translated_embed_language_detail(len(selected_languages))
@@ -1039,6 +1044,9 @@ def evaluation_credits_quote_blocks(
     is_ibm: bool = False,
     language_costs: list[dict[str, Any]] | None = None,
     intro_text: str | None = None,
+    source_label: str | None = None,
+    source_detail: str | None = None,
+    source_tokens: int | None = None,
     additional_label: str | None = None,
     additional_detail: str | None = None,
     additional_tokens: int | None = None,
@@ -1158,6 +1166,28 @@ def evaluation_credits_quote_blocks(
                 ],
             }
         )
+    if source_tokens and source_label:
+        blocks.append(
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{source_label}:*\n" f"{source_detail or source_label}"
+                        ),
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{cost_label}:*\n"
+                            f"{_format_evaluate_quote_cost(source_tokens, is_ibm=is_ibm)}"
+                        ),
+                    },
+                ],
+            }
+        )
+        total_tokens += source_tokens
     if additional_tokens and additional_label:
         blocks.append(
             {

@@ -457,6 +457,52 @@ def test_ai_adjust_modal_uses_independent_file_language_checkboxes():
     assert ":paperclip: *second.docx*" in str(view["blocks"])
     assert "independent per file" in str(view["blocks"])
     assert "*Total cost:* USD 0.50" in str(view["blocks"])
+
+
+def test_ai_adjust_modal_shows_source_embed_row_when_tokens_passed():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="media_translation",
+        language_costs=[
+            {
+                "file_uuid": "file-1",
+                "file_label": "clip.mp4",
+                "value": "lang-1",
+                "label": "French",
+                "token": 300,
+            },
+        ],
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=300,
+        source_embed_tokens=30,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    rendered = str(view["blocks"])
+    assert "*Source subtitle embedding:* USD 0.60" in rendered
+    assert "Translated subtitle embedding" not in rendered
+    assert "*Total cost:* USD 6.60" in rendered
+
+
+def test_ai_adjust_modal_omits_source_embed_row_by_default():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="evaluate",
+        language_costs=[
+            {
+                "file_uuid": "file-1",
+                "file_label": "first.docx",
+                "value": "lang-1",
+                "label": "French",
+                "token": 25,
+            },
+        ],
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=25,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    assert "Source subtitle embedding" not in str(view["blocks"])
     assert "AI Translation" not in str(view["blocks"])
     assert "ai_quote_translation_cost_block" not in str(view["blocks"])
     assert view["submit"]["text"] == "Accept Quote"

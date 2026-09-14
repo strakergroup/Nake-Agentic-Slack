@@ -334,9 +334,26 @@ class TestMediaTranslationQuoteBlocks:
         rendered = str(blocks)
 
         assert "Translated subtitle embedding" in rendered
+        assert "Source subtitle embedding" not in rendered
         assert "2 languages" in rendered
         assert "USD 1.20" in rendered
         assert "*Total cost:* USD 13.20" in rendered
+
+    def test_media_translation_quote_blocks_source_embed_before_translated(self):
+        session = self._session()
+        session["embed_source"] = True
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+        rendered = str(blocks)
+
+        assert "Source subtitle embedding" in rendered
+        assert (
+            rendered.index("Source subtitle embedding")
+            < rendered.index("Translated subtitle embedding")
+        )
+        assert "*Total cost:* USD 13.80" in rendered
 
     def test_media_translation_quote_blocks_embed_follows_selected_languages(self):
         session = self._session()

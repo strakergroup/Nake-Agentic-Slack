@@ -936,6 +936,7 @@ def evaluation_ai_quote_adjust_modal(
     pdf_tokens: int = 0,
     embed_tokens: int = 0,
     embed_language_count: int = 0,
+    source_embed_tokens: int = 0,
     channel_id: str | None = None,
     message_ts: str | None = None,
 ) -> dict[str, Any]:
@@ -1011,6 +1012,20 @@ def evaluation_ai_quote_adjust_modal(
                 },
             }
         )
+    if source_embed_tokens:
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "ai_quote_source_embed_cost_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{_('Source subtitle embedding')}:* "
+                        f"{_format_evaluate_quote_cost(source_embed_tokens)}"
+                    ),
+                },
+            }
+        )
     if embed_tokens:
         blocks.append(
             {
@@ -1026,7 +1041,7 @@ def evaluation_ai_quote_adjust_modal(
                 },
             }
         )
-    total_tokens = ai_tokens + pdf_tokens + embed_tokens
+    total_tokens = ai_tokens + pdf_tokens + source_embed_tokens + embed_tokens
     blocks.append(
         {
             "type": "section",

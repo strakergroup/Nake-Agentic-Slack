@@ -593,6 +593,7 @@ def update_modal_cost_blocks(
     language_costs: list[dict[str, Any]] | None = None,
     embed_tokens: int = 0,
     embed_language_count: int = 0,
+    source_embed_tokens: int = 0,
 ) -> dict[str, Any]:
     """Update cost blocks and keep checkbox initial options in sync with state.
 
@@ -632,10 +633,15 @@ def update_modal_cost_blocks(
                 f"{translated_embed_language_detail(embed_language_count)} · "
                 f"{_format_evaluate_quote_cost(embed_tokens)}"
             )
+        elif block_id == "ai_quote_source_embed_cost_block":
+            block["text"]["text"] = (
+                f"*{_('Source subtitle embedding')}:* "
+                f"{_format_evaluate_quote_cost(source_embed_tokens)}"
+            )
         elif block_id == "total_cost_block":
             block["text"]["text"] = (
                 f"*{_('Total cost')}:* "
-                f"{_format_evaluate_quote_cost(ai_tokens + pdf_tokens + embed_tokens)}"
+                f"{_format_evaluate_quote_cost(ai_tokens + pdf_tokens + source_embed_tokens + embed_tokens)}"
             )
         if not display_by_pair:
             continue

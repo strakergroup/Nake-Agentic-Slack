@@ -18,6 +18,8 @@ from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSLATION_ACCEPT,
     STAGE_TRANSLATING,
     media_translation_tokens,
+    source_embed_tokens_for_session,
+    translated_embed_tokens_for_session,
 )
 
 MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID = "media_translation_quote_adjust"
@@ -128,10 +130,24 @@ def media_translation_language_costs(session: dict[str, Any]) -> list[dict[str, 
     )
 
 
+def media_quote2_required_tokens(
+    session: dict[str, Any], pairs: list[str]
+) -> int:
+    """Tokens charged at Quote2 accept for the selected pairs plus embedding."""
+    from app.slack.document_mt_quote_adjustment import document_mt_tokens_for_pairs
+
+    return (
+        document_mt_tokens_for_pairs(
+            media_translation_quote_from_session(session), pairs
+        )
+        + translated_embed_tokens_for_session(session, language_count=len(pairs))
+        + source_embed_tokens_for_session(session)
+    )
+
+
 def media_translation_quote_has_rows(session: dict[str, Any]) -> bool:
     """True when Quote2 can render the shared AI Translate file/language grid."""
     return bool(media_translation_language_costs(session))
-
 
 def media_translation_quote_uses_adjust_layout(session: dict[str, Any]) -> bool:
     """Quote2 (not Quote1) uses the shared AI Translate Accept/Adjust grid.
