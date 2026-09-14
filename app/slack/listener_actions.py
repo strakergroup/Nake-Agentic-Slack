@@ -614,7 +614,7 @@ async def maybe_show_thread_media_embed_option(
                 channel=str(sessions[-1].get("channel_id") or channel_id),
                 text=_(
                     "That file doesn't match the transcript under review. "
-                    "Use *Replace* under the file you edited."
+                    "Use *Edit and reupload* under the file you edited."
                 ),
                 thread_ts=thread_ts,
             )

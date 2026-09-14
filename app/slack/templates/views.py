@@ -1610,8 +1610,8 @@ def media_srt_replace_modal(
         "type": "modal",
         "callback_id": "media_srt_replace_submit",
         "private_metadata": metadata,
-        "title": {"type": "plain_text", "text": _("Replace file")[:24]},
-        "submit": {"type": "plain_text", "text": _("Replace")},
+        "title": {"type": "plain_text", "text": _("Edit and reupload")[:24]},
+        "submit": {"type": "plain_text", "text": _("Reupload")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "blocks": [
             SectionBlock(

@@ -325,7 +325,7 @@ async def handle_media_srt_approve_continue(
                 channel=context["user_id"],
                 text=_(
                     "We couldn't tell which subtitle that replacement belongs to. "
-                    "Use *Replace* under the file you edited."
+                    "Use *Edit and reupload* under the file you edited."
                 ),
             )
             return
@@ -616,7 +616,7 @@ async def handle_media_srt_replace_open(
             client,
             view_id,
             status_modal(
-                _("Replace file")[:24],
+                _("Edit and reupload")[:24],
                 _(
                     "Upload your edited subtitle file in this thread to replace "
                     "the file under review."

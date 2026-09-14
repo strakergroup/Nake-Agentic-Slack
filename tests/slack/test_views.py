@@ -879,7 +879,7 @@ class TestMediaSrtReplaceModal:
         assert element["type"] == "file_input"
         assert "filetypes" not in element
         assert element["max_files"] == 1
-        assert modal["title"]["text"] == "Replace file"
+        assert modal["title"]["text"] == "Edit and reupload"
         assert file_block["label"]["text"] == "Replacement file"
         dumped = json.dumps(modal)
         assert "edited subtitle file" in dumped

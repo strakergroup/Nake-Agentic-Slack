@@ -3280,13 +3280,13 @@ class MediaSrtReviewMessage(SlackMessage):
             else quote_id
         )
         replace_button = ButtonElement(
-            text=PlainTextObject(text=_("Replace"), emoji=True),
+            text=PlainTextObject(text=_("Edit and reupload"), emoji=True),
             action_id="media_srt_replace",
             value=replace_value,
         )
         actions = ActionsBlock(elements=[replace_button])
         super().__init__(
-            _("Replace"),
+            _("Edit and reupload"),
             [actions.to_dict()],
         )
 
@@ -3302,12 +3302,12 @@ class MediaSrtApproveContinueMessage(SlackMessage):
         if translated:
             review_text = _(
                 "Your file is AI translated and can be downloaded above.\n"
-                "You can *Replace* a subtitle file before continuing.\n"
+                "You can *Edit and reupload* a subtitle file before continuing.\n"
                 "When you are ready, *Approve & Continue* to submit this review."
             )
         else:
             review_text = _(
-                "You can *Replace* the transcript before continuing.\n"
+                "You can *Edit and reupload* the transcript before continuing.\n"
                 "When you are ready, *Approve & Continue* to submit this review."
             )
         review_section = SectionBlock(text=MarkdownTextObject(text=review_text))

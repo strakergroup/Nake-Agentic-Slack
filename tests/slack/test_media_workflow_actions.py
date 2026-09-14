@@ -324,7 +324,7 @@ async def test_unmatched_thread_srt_during_translation_review_does_not_open_embe
     mock_quote.assert_not_awaited()
     mock_upload.assert_not_awaited()
     posted = client.chat_postMessage.await_args.kwargs["text"].lower()
-    assert "replace" in posted
+    assert "edit and reupload" in posted
 
 
 @pytest.mark.asyncio
