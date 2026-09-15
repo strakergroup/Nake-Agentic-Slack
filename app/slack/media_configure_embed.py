@@ -137,7 +137,10 @@ def _configure_embed_tracks(
     source_lang = getattr(task, "detected_language", None) or "und"
     srt_file_ids = ([source_id] if source_id else []) + translated_ids
     mux_languages = ([str(source_lang)] if source_id else []) + translated_langs
-    return srt_file_ids or None, mux_languages, translated_langs
+    billing_languages = (
+        [*translated_langs, str(source_lang)] if source_id else translated_langs
+    )
+    return srt_file_ids or None, mux_languages, billing_languages
 
 
 async def resume_configure_embed_phase(

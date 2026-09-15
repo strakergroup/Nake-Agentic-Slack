@@ -771,7 +771,7 @@ async def test_replaced_translated_srt_keeps_other_target_languages():
         "srt-fr",
     ]
     assert asr_task.extra_data["language_codes"] == ["en", "es", "fr"]
-    assert asr_task.extra_data["target_languages"] == ["es", "fr"]
+    assert asr_task.extra_data["target_languages"] == ["es", "fr", "en"]
     mock_http.assert_not_called()
 
 
@@ -839,7 +839,7 @@ async def test_translated_embed_muxes_source_and_all_target_tracks():
     asr_task = mock_create.await_args.args[0]
     assert asr_task.extra_data["srt_file_ids"] == ["srt-source", "srt-fi", "srt-es"]
     assert asr_task.extra_data["language_codes"] == ["en", "fi", "es"]
-    assert asr_task.extra_data["target_languages"] == ["fi", "es"]
+    assert asr_task.extra_data["target_languages"] == ["fi", "es", "en"]
     mock_http.assert_not_called()
 
 
@@ -891,6 +891,28 @@ def test_translated_embed_tracks_use_every_replaced_language():
     assert ids == ["srt-new-fi", "srt-new-es"]
     assert langs == ["fi", "es"]
     assert billing == ["fi", "es"]
+
+
+def test_translated_embed_billing_includes_muxed_source_track():
+    from app.slack.media_configure_embed import _configure_embed_tracks
+
+    task = SimpleNamespace(
+        result_file_id="srt-source",
+        translated_file_ids={"fi": "srt-fi", "es": "srt-es"},
+        detected_language="en",
+    )
+    ids, langs, billing = _configure_embed_tracks(
+        session={
+            "embed_source": True,
+            "embed_translated": True,
+            "target_languages": ["fi", "es"],
+        },
+        task=task,
+        translated=True,
+    )
+    assert ids == ["srt-source", "srt-fi", "srt-es"]
+    assert langs == ["en", "fi", "es"]
+    assert billing == ["fi", "es", "en"]
 
 
 @pytest.mark.asyncio

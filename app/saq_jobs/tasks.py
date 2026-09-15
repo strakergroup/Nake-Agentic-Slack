@@ -342,8 +342,23 @@ async def _post_configure_srt_review(
     channel_id: str,
     thread_ts: str | None,
 ) -> None:
+    from app.media.media_workflow import MediaWorkflowStage
+    from app.slack.media_quotes import get_media_quote_session
     from app.slack.media_workflow_actions import _post_srt_review
 
+    try:
+        session = await get_media_quote_session(quote_id)
+    except Exception:
+        logger.exception(
+            "SRT review session lookup failed; posting review anyway",
+            extra={"quote_id": quote_id},
+        )
+        session = None
+    if (
+        session is not None
+        and session.get("stage") != MediaWorkflowStage.AWAITING_SOURCE_REVIEW
+    ):
+        return
     await _post_srt_review(
         client,
         {
