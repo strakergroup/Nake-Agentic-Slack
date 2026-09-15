@@ -1333,10 +1333,6 @@ async def test_replace_modal_accepts_differently_named_srt():
         "target_languages": [],
         "channel_id": "C1",
         "thread_ts": "1.2",
-        "transcript_zip_entries": [
-            {"file_id": "srt-old", "filename": "clip.srt"},
-            {"file_id": "docx-1", "filename": "clip.docx"},
-        ],
     }
     view = {
         "private_metadata": "q1",
