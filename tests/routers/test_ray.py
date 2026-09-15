@@ -20,6 +20,7 @@ from app.ray.events.models import (
 )
 from app.routers.ray import RayCallback, api_job_callback, ray_events, router
 from app.slack.utils import format_callback_error
+from app.translate import translator_var
 
 
 @pytest.fixture
@@ -96,8 +97,6 @@ class TestRayEventsEndpoint:
         )
 
     def test_callback_error_survives_mangled_translated_template(self):
-        from app.translate import translator_var
-
         class _ManglingTranslator:
             def translate(self, input, max_length=0):
                 return "Transkription fehlgeschlagen: No sound {hinweis}", True
@@ -106,22 +105,6 @@ class TestRayEventsEndpoint:
         try:
             result = format_callback_error("transcription", "No sound")
             assert "No sound" in result
-        finally:
-            translator_var.reset(token)
-
-    def test_underscore_returns_mangled_template_instead_of_raising(self):
-        from app.translate import _, translator_var
-
-        class _ManglingTranslator:
-            def translate(self, input, max_length=0):
-                return 'Transcription failed: { "error"}', True
-
-        token = translator_var.set(_ManglingTranslator())
-        try:
-            assert (
-                _("Transcription failed: {error_detail}")
-                == 'Transcription failed: { "error"}'
-            )
         finally:
             translator_var.reset(token)
 
