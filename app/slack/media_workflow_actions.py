@@ -352,9 +352,14 @@ async def _complete_source_approval(
 ) -> dict[str, Any] | None:
     """Run the source-approval follow-on shared by Approve and auto-advance.
 
+    The deferred Word transcript uploads before the decision executes so the
+    source files land in the thread ahead of Quote 2. Word delivery is
+    best-effort and never raises, so a failure still proceeds to Quote 2.
+
     Returns the updated session, or None when the follow-on posted its own
     error message and the caller should stop.
     """
+    await _post_deferred_word_transcript_if_needed(client, session)
     try:
         updated = await execute_media_workflow_decision(
             client=client,
@@ -371,7 +376,6 @@ async def _complete_source_approval(
             thread_ts=session.get("thread_ts"),
         )
         return None
-    await _post_deferred_word_transcript_if_needed(client, session)
     await _clear_srt_review_actions(client, session, translated=False)
     return updated
 
