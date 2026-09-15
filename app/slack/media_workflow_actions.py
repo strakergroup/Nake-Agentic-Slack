@@ -632,10 +632,16 @@ async def _post_srt_file_replace(
 
 
 async def _post_srt_approve_continue(
-    client: AsyncWebClient, session: dict[str, Any], *, translated: bool = False
+    client: AsyncWebClient,
+    session: dict[str, Any],
+    *,
+    translated: bool = False,
+    include_replace: bool = False,
 ) -> None:
     approve = MediaSrtApproveContinueMessage(
-        str(session["quote_id"]), translated=translated
+        str(session["quote_id"]),
+        translated=translated,
+        include_replace=include_replace,
     )
     await _record_srt_review_ts(
         client, session, text=approve.text, blocks=approve.blocks
@@ -650,12 +656,7 @@ async def _post_srt_review(
     file_label: str | None = None,
 ) -> None:
     if language is None:
-        approve = MediaSrtApproveContinueMessage(
-            str(session["quote_id"]), include_replace=True
-        )
-        await _record_srt_review_ts(
-            client, session, text=approve.text, blocks=approve.blocks
-        )
+        await _post_srt_approve_continue(client, session, include_replace=True)
         return
     await _post_srt_file_replace(
         client, session, language=language, file_label=file_label

@@ -44,7 +44,6 @@ from app.slack.media_quote_adjustment import (
 )
 from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSLATION_ACCEPT,
-    embedding_tokens_for_duration,
     get_media_quote_session,
     source_embed_tokens_for_session,
     translated_embed_tokens_for_session,
@@ -366,24 +365,15 @@ async def refresh_ai_quote_adjustment_cost(
         ai_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
         pdf_tokens = 0
         toggles = media_embed_toggles_from_view(view)
-        embed_source_on, embed_translated_on = (
-            toggles
-            if toggles is not None
-            else (
-                bool(session.get("embed_source")),
-                bool(session.get("embed_translated")),
-            )
-        )
-        duration_ms = int(session.get("duration_ms") or 0)
-        source_embed_tokens = (
-            embedding_tokens_for_duration(duration_ms, 1) if embed_source_on else 0
-        )
-        embed_tokens = (
-            embedding_tokens_for_duration(duration_ms, len(selected_pairs))
-            if embed_translated_on
-            else 0
+        merged = dict(session)
+        if toggles is not None:
+            merged["embed_source"] = toggles[0]
+            merged["embed_translated"] = toggles[1]
+        embed_tokens = translated_embed_tokens_for_session(
+            merged, language_count=len(selected_pairs)
         )
         embed_language_count = len(selected_pairs) if embed_tokens else 0
+        source_embed_tokens = source_embed_tokens_for_session(merged)
     elif quote_kind == "pdf_prequote":
         session = await get_pdf_evaluate_quote_session(quote_id)
         if not session:

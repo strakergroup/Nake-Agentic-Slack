@@ -61,6 +61,7 @@ from app.slack.media_quotes import (
 )
 from app.slack.select_options import _get_languages_cached
 from app.slack.templates.messages import (
+    AI_TRANSLATION_COMPLETE_TEXT,
     JobTranscribedEventMessage,
     MediaEmbeddingPartialMessage,
     MediaTranslationPartialMessage,
@@ -920,9 +921,7 @@ async def handle_translation_complete(
         elif not review_enabled:
             await client.chat_postMessage(
                 channel=channel_id,
-                text=_(
-                    "AI translation is complete and your translation is ready to download."
-                ),
+                text=_(AI_TRANSLATION_COMPLETE_TEXT),
                 thread_ts=effective_thread_ts,
             )
         if extra.get("workflow_type"):

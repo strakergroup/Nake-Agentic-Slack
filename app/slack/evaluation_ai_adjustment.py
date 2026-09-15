@@ -533,20 +533,13 @@ def media_embed_toggles_from_view(view: dict[str, Any]) -> tuple[bool, bool] | N
     Returns ``(embed_source, embed_translated)``, or None when the view has
     no embedding toggle block (other quote kinds).
     """
-    found = False
-    selected: set[str] = set()
-    for block_data in (view.get("state") or {}).get("values", {}).values():
-        action_data = block_data.get(AI_QUOTE_EMBED_SELECTION_ACTION_ID)
-        if not action_data:
-            continue
-        found = True
-        selected.update(
-            str(option["value"])
-            for option in action_data.get("selected_options") or []
-            if option.get("value")
-        )
-    if not found:
+    blocks = (view.get("state") or {}).get("values", {})
+    if not any(
+        AI_QUOTE_EMBED_SELECTION_ACTION_ID in block_data
+        for block_data in blocks.values()
+    ):
         return None
+    selected = set(selected_values(view, AI_QUOTE_EMBED_SELECTION_ACTION_ID))
     return EMBED_SOURCE_VALUE in selected, EMBED_TRANSLATED_VALUE in selected
 
 
@@ -593,17 +586,20 @@ def sync_checkbox_initial_options_from_state(view: dict[str, Any]) -> None:
     re-checks every file/language and Accept Quote submits the full set.
     """
     selected = set(selected_pairs_from_view(view))
+    embed_selected = set(selected_values(view, AI_QUOTE_EMBED_SELECTION_ACTION_ID))
     for block in view.get("blocks") or []:
         for element in block.get("elements") or []:
             if element.get("type") != "checkboxes":
                 continue
-            if element.get("action_id") != AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID:
+            if element.get("action_id") == AI_QUOTE_EMBED_SELECTION_ACTION_ID:
+                wanted = embed_selected
+            elif element.get("action_id") == AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID:
+                wanted = selected
+            else:
                 continue
             options = element.get("options") or []
             initial_options = [
-                option
-                for option in options
-                if str(option.get("value") or "") in selected
+                option for option in options if str(option.get("value") or "") in wanted
             ]
             if initial_options:
                 element["initial_options"] = initial_options

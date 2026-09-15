@@ -757,3 +757,46 @@ def test_ai_adjust_modal_omits_embed_toggles_by_default():
         message_ts="111.222",
     )
     assert AI_QUOTE_EMBED_SELECTION_ACTION_ID not in str(view["blocks"])
+
+
+def test_update_modal_cost_blocks_syncs_embed_toggle_initials():
+    from app.slack.evaluation_ai_adjustment import update_modal_cost_blocks
+
+    option_source = {"text": {"type": "mrkdwn", "text": "*Source*"}, "value": "embed_source"}
+    option_translated = {
+        "text": {"type": "mrkdwn", "text": "*Translated*"},
+        "value": "embed_translated",
+    }
+    view = {
+        "state": {
+            "values": {
+                "ai_quote_embed": {
+                    AI_QUOTE_EMBED_SELECTION_ACTION_ID: {
+                        "selected_options": [{"value": "embed_translated"}]
+                    }
+                }
+            }
+        },
+        "blocks": [
+            {
+                "block_id": "ai_quote_embed_selection",
+                "elements": [
+                    {
+                        "type": "checkboxes",
+                        "options": [option_source, option_translated],
+                        "action_id": AI_QUOTE_EMBED_SELECTION_ACTION_ID,
+                        "initial_options": [option_source, option_translated],
+                    }
+                ],
+            },
+            {
+                "block_id": "total_cost_block",
+                "text": {"type": "mrkdwn", "text": "*Total cost:* USD 0.00"},
+            },
+        ],
+    }
+
+    updated = update_modal_cost_blocks(view, ai_tokens=0, pdf_tokens=0)
+
+    toggles = updated["blocks"][0]["elements"][0]
+    assert toggles["initial_options"] == [option_translated]

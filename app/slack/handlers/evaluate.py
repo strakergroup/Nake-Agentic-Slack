@@ -511,8 +511,9 @@ async def handle_ai_quote_adjust_submit(
     )
     persist_kwargs: dict[str, Any] = {}
     if toggles is not None:
-        persist_kwargs["embed_source"] = toggles[0]
-        persist_kwargs["embed_translated"] = toggles[1]
+        embed_source, embed_translated = toggles
+        persist_kwargs["embed_source"] = embed_source
+        persist_kwargs["embed_translated"] = embed_translated
     persisted = await persist_ai_quote_adjustment(
         client,
         quote_id=quote_id,

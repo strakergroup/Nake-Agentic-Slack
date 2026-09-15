@@ -1015,19 +1015,20 @@ def evaluation_ai_quote_adjust_modal(
                 "value": EMBED_TRANSLATED_VALUE,
             },
         ]
-        toggled = set()
-        if embed_source:
-            toggled.add(EMBED_SOURCE_VALUE)
-        if embed_translated:
-            toggled.add(EMBED_TRANSLATED_VALUE)
-        embed_element: dict[str, Any] = {
+        toggled = [
+            option
+            for option, selected in zip(
+                embed_options, (embed_source, embed_translated), strict=True
+            )
+            if selected
+        ]
+        embed_element = {
             "type": "checkboxes",
             "options": embed_options,
             "action_id": AI_QUOTE_EMBED_SELECTION_ACTION_ID,
         }
-        initial = [opt for opt in embed_options if opt["value"] in toggled]
-        if initial:
-            embed_element["initial_options"] = initial
+        if toggled:
+            embed_element["initial_options"] = toggled
         blocks.append(
             {
                 "type": "actions",

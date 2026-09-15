@@ -3263,6 +3263,19 @@ class MediaEmbedOptionMessage(SlackMessage):
         )
 
 
+AI_TRANSLATION_COMPLETE_TEXT = (
+    "AI translation is complete and your translation is ready to download."
+)
+
+
+def _replace_button(value: str) -> ButtonElement:
+    return ButtonElement(
+        text=PlainTextObject(text=_("Edit and reupload"), emoji=True),
+        action_id="media_srt_replace",
+        value=value,
+    )
+
+
 class MediaSrtReviewMessage(SlackMessage):
     """Replace control posted next to an uploaded subtitle file."""
 
@@ -3278,11 +3291,7 @@ class MediaSrtReviewMessage(SlackMessage):
             if language
             else quote_id
         )
-        replace_button = ButtonElement(
-            text=PlainTextObject(text=_("Edit and reupload"), emoji=True),
-            action_id="media_srt_replace",
-            value=replace_value,
-        )
+        replace_button = _replace_button(replace_value)
         blocks: list[dict] = []
         if file_label:
             blocks.append(
@@ -3315,7 +3324,7 @@ class MediaSrtApproveContinueMessage(SlackMessage):
         )
         if translated:
             review_text = _(
-                "AI translation is complete and your translation is ready to download.\n"
+                AI_TRANSLATION_COMPLETE_TEXT + "\n"
                 "Either press *Edit and reupload* to edit and replace a subtitle file,\n"
                 "or press *Proceed* to continue."
             )
@@ -3326,16 +3335,9 @@ class MediaSrtApproveContinueMessage(SlackMessage):
                 "or press *Proceed* to continue."
             )
         review_section = SectionBlock(text=MarkdownTextObject(text=review_text))
-        elements: list = [approve_button]
-        if include_replace and not translated:
-            elements.insert(
-                0,
-                ButtonElement(
-                    text=PlainTextObject(text=_("Edit and reupload"), emoji=True),
-                    action_id="media_srt_replace",
-                    value=quote_id,
-                ),
-            )
+        elements: list[ButtonElement] = [approve_button]
+        if include_replace:
+            elements.insert(0, _replace_button(quote_id))
         actions = ActionsBlock(elements=elements)
         super().__init__(
             review_text,
