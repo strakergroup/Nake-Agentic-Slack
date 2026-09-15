@@ -354,9 +354,9 @@ async def _post_configure_srt_review(
             extra={"quote_id": quote_id},
         )
         session = None
-    if (
-        session is not None
-        and session.get("stage") != MediaWorkflowStage.AWAITING_SOURCE_REVIEW
+    if session is not None and session.get("stage") not in (
+        MediaWorkflowStage.TRANSCRIBING,
+        MediaWorkflowStage.AWAITING_SOURCE_REVIEW,
     ):
         return
     await _post_srt_review(

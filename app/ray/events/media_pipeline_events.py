@@ -127,8 +127,14 @@ async def continue_configure_after_failed_source_embed(
     if not quote_id:
         return
     session = await get_media_quote_session(str(quote_id))
-    workflow = media_workflow_session_from_quote(session) if session else None
-    if workflow is None or session is None:
+    if session is None:
+        return
+    # The source embed will not run: drop it so Quote 2 neither shows nor
+    # gates on a service that can no longer be delivered.
+    session["embed_source"] = False
+    await update_media_quote_session(str(quote_id), {"embed_source": False})
+    workflow = media_workflow_session_from_quote(session)
+    if workflow is None:
         return
     from app.slack.media_workflow_actions import execute_media_workflow_decision
 

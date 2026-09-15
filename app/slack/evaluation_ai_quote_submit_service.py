@@ -38,6 +38,8 @@ from app.slack.media_quote_actions import update_media_translation_quote_slack_m
 from app.slack.media_quote_adjustment import (
     MEDIA_TRANSLATION_QUOTE_KIND,
     media_quote_message_ts,
+    media_selected_target_language_names,
+    media_selected_target_languages,
     media_translation_quote_from_session,
 )
 from app.slack.media_quotes import (
@@ -126,6 +128,8 @@ async def persist_ai_quote_adjustment(
         ):
             return False
         quote = media_translation_quote_from_session(session)
+        selected_codes = media_selected_target_languages(session, selected_pairs=pairs)
+        selected_names = media_selected_target_language_names(session, selected_codes)
         resolved_embed_source = (
             embed_source
             if embed_source is not None
@@ -158,6 +162,8 @@ async def persist_ai_quote_adjustment(
                 "selected_pairs": pairs,
                 "quote": quote,
                 "total_tokens": tokens,
+                "target_languages": selected_codes,
+                "target_language_names": selected_names,
                 "embed_source": resolved_embed_source,
                 "embed_translated": resolved_embed_translated,
                 "channel_id": resolved_channel_id or session.get("channel_id"),

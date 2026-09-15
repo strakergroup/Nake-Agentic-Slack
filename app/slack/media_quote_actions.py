@@ -661,7 +661,9 @@ async def cancel_media_quote(
     """Cancel a media Quote1 or Quote2 session."""
     quote_id = action["value"]
     session = await get_media_quote_session(quote_id)
-    if session is not None and session.get("user_id") != context["user_id"]:
+    if session is not None and not await media_quote_actor_may_continue(
+        session, context
+    ):
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to cancel this media quote."),

@@ -562,6 +562,41 @@ class TestPersistMediaTranslationQuoteAdjustment:
             150000, 1
         ) + embedding_tokens_for_duration(60_000, 1)
 
+    async def test_persist_syncs_target_languages_to_selection(self):
+        client = AsyncMock()
+        session = _session()
+        with (
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.get_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ) as mock_update_session,
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_media_translation_quote_slack_message",
+                new_callable=AsyncMock,
+            ),
+        ):
+            persisted = await persist_ai_quote_adjustment(
+                client,
+                quote_id="quote-1",
+                quote_kind="media_translation",
+                selected_pairs=["Fmedia:fr"],
+                user_id="U1",
+                context={},
+                channel_id="C1",
+                message_ts="111.222",
+            )
+
+        assert persisted is True
+        updates = mock_update_session.await_args.args[1]
+        assert updates["target_languages"] == ["fr"]
+        assert updates["target_language_names"] == ["French"]
+
     async def test_persist_applies_embed_toggles_and_reprices(self):
         client = AsyncMock()
         session = _session(

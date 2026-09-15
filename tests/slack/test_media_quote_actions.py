@@ -429,6 +429,99 @@ async def test_cancel_media_quote_fails_submissions():
 
 
 @pytest.mark.asyncio
+async def test_cancel_media_quote_allows_quote_admin():
+    from app.slack.media_quote_actions import cancel_media_quote
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {"user_id": "U-admin"}.get(key)
+    context.enterprise_id = None
+
+    session = {
+        "quote_id": "q1",
+        "user_id": "U-owner",
+        "stage": STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+        "pipeline_kind": PIPELINE_TRANSCRIBE,
+        "submission_id": 55,
+        "channel_id": "C1",
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.slack.media_quote_actions.media_quote_actor_may_continue",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "app.slack.media_quote_actions.update_media_quote_session",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.slack.media_quote_actions.delete_media_quote_session",
+            new=AsyncMock(),
+        ) as mock_delete,
+        patch(
+            "app.ray.events.media_pipeline_events.fail_media_submissions",
+            new=AsyncMock(),
+        ),
+    ):
+        await cancel_media_quote(
+            client=client,
+            body={"channel": {"id": "C1"}, "message": {"ts": "1.2"}},
+            action={"value": "q1"},
+            context=context,
+        )
+
+    mock_delete.assert_awaited_once_with("q1")
+
+
+@pytest.mark.asyncio
+async def test_cancel_media_quote_denies_unauthorized_actor():
+    from app.slack.media_quote_actions import cancel_media_quote
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {"user_id": "U-other"}.get(key)
+    context.enterprise_id = None
+
+    session = {
+        "quote_id": "q1",
+        "user_id": "U-owner",
+        "stage": STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+        "pipeline_kind": PIPELINE_TRANSCRIBE,
+        "submission_id": 55,
+        "channel_id": "C1",
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.slack.media_quote_actions.media_quote_actor_may_continue",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.slack.media_quote_actions.delete_media_quote_session",
+            new=AsyncMock(),
+        ) as mock_delete,
+    ):
+        await cancel_media_quote(
+            client=client,
+            body={"channel": {"id": "C1"}, "message": {"ts": "1.2"}},
+            action={"value": "q1"},
+            context=context,
+        )
+
+    mock_delete.assert_not_awaited()
+    assert "permission" in client.chat_postMessage.await_args.kwargs["text"].lower()
+
+
+@pytest.mark.asyncio
 async def test_post_or_auto_start_falls_back_to_quote_when_balance_fails():
     """Non-admin auto-start must not strand the submission without Accept UI."""
     from app.slack.media_quote_actions import post_or_auto_start_media_quote

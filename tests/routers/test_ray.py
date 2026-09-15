@@ -978,19 +978,24 @@ class TestRayEventsEndpoint:
                                 "app.routers.ray.fail_media_submissions",
                                 new_callable=AsyncMock,
                             ) as mock_fail:
-                                auth = RayEventAuth()
-                                await auth.initialize(event, "valid-token")
-                                await ray_events(event, auth)
-                                mock_client.chat_postEphemeral.assert_called_once()
-                                assert (
-                                    "no output files"
-                                    in (
-                                        mock_client.chat_postEphemeral.call_args.kwargs[
-                                            "text"
-                                        ]
+                                with patch(
+                                    "app.routers.ray.mark_media_quote_cancelled",
+                                    new_callable=AsyncMock,
+                                ) as mock_cancel:
+                                    auth = RayEventAuth()
+                                    await auth.initialize(event, "valid-token")
+                                    await ray_events(event, auth)
+                                    mock_client.chat_postEphemeral.assert_called_once()
+                                    assert (
+                                        "no output files"
+                                        in (
+                                            mock_client.chat_postEphemeral.call_args.kwargs[
+                                                "text"
+                                            ]
+                                        )
                                     )
-                                )
-                                mock_fail.assert_awaited_once()
+                                    mock_fail.assert_awaited_once()
+                                    mock_cancel.assert_awaited_once()
 
     def _partial_translation_task_info(self, task_uuid, client_id):
         return TranscriptionTaskInfo(
@@ -1473,6 +1478,11 @@ class TestRayEventsEndpoint:
                 new=AsyncMock(return_value=session),
             ),
             patch(
+                "app.ray.events.media_pipeline_events.update_media_quote_session",
+                new_callable=AsyncMock,
+                side_effect=lambda quote_id, updates: {**session, **updates},
+            ),
+            patch(
                 "app.slack.media_workflow_actions.update_media_quote_session",
                 new_callable=AsyncMock,
                 side_effect=lambda quote_id, updates: {**session, **updates},
@@ -1588,6 +1598,11 @@ class TestRayEventsEndpoint:
             patch(
                 "app.ray.events.media_pipeline_events.get_media_quote_session",
                 new=AsyncMock(return_value=session),
+            ),
+            patch(
+                "app.ray.events.media_pipeline_events.update_media_quote_session",
+                new_callable=AsyncMock,
+                side_effect=lambda quote_id, updates: {**session, **updates},
             ),
             patch(
                 "app.slack.media_workflow_actions.update_media_quote_session",

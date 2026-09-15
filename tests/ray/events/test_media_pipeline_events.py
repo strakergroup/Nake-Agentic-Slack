@@ -1933,6 +1933,11 @@ async def test_continue_configure_after_failed_source_embed_posts_quote2():
             new=AsyncMock(return_value=session),
         ),
         patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ) as mock_flag_update,
+        patch(
             "app.slack.media_workflow_actions.update_media_quote_session",
             new_callable=AsyncMock,
             side_effect=lambda quote_id, updates: {**session, **updates},
@@ -1952,6 +1957,11 @@ async def test_continue_configure_after_failed_source_embed_posts_quote2():
         )
 
     mock_post.assert_awaited_once()
+    posted_session = mock_post.await_args.args[1]
+    labels = [item["label"] for item in posted_session["line_items"]]
+    assert "Source subtitle embedding" not in labels
+    assert posted_session["embed_source"] is False
+    assert mock_flag_update.await_args.args[1] == {"embed_source": False}
 
 
 @pytest.mark.asyncio
