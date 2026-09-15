@@ -95,6 +95,36 @@ class TestRayEventsEndpoint:
             "Translation failed: Unknown error"
         )
 
+    def test_callback_error_survives_mangled_translated_template(self):
+        from app.translate import translator_var
+
+        class _ManglingTranslator:
+            def translate(self, input, max_length=0):
+                return "Transkription fehlgeschlagen: No sound {hinweis}", True
+
+        token = translator_var.set(_ManglingTranslator())
+        try:
+            result = format_callback_error("transcription", "No sound")
+            assert "No sound" in result
+        finally:
+            translator_var.reset(token)
+
+    def test_underscore_returns_mangled_template_instead_of_raising(self):
+        from app.translate import _, translator_var
+
+        class _ManglingTranslator:
+            def translate(self, input, max_length=0):
+                return 'Transcription failed: { "error"}', True
+
+        token = translator_var.set(_ManglingTranslator())
+        try:
+            assert (
+                _("Transcription failed: {error_detail}")
+                == 'Transcription failed: { "error"}'
+            )
+        finally:
+            translator_var.reset(token)
+
     @pytest.mark.asyncio
     async def test_ray_events_invalid_token(self, mock_slack_user):
         """Test that invalid token raises 401."""
@@ -986,13 +1016,10 @@ class TestRayEventsEndpoint:
                                     await auth.initialize(event, "valid-token")
                                     await ray_events(event, auth)
                                     mock_client.chat_postEphemeral.assert_called_once()
-                                    assert (
-                                        "no output files"
-                                        in (
-                                            mock_client.chat_postEphemeral.call_args.kwargs[
-                                                "text"
-                                            ]
-                                        )
+                                    assert "no output files" in (
+                                        mock_client.chat_postEphemeral.call_args.kwargs[
+                                            "text"
+                                        ]
                                     )
                                     mock_fail.assert_awaited_once()
                                     mock_cancel.assert_awaited_once()

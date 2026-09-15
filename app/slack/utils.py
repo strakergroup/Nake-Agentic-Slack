@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from app.translate import _
+from app.slack.buglog_notifier import notify_exception
 
 logger = logging.getLogger(__name__)
 
@@ -64,15 +65,25 @@ def safe_callback_error_detail(payload_error: Any) -> str:
 
 def format_callback_error(stage: str, payload_error: Any) -> str:
     error_detail = safe_callback_error_detail(payload_error)
-    if stage == "transcription":
-        return _("Transcription failed: {error_detail}").format(
-            error_detail=error_detail
+    templates = {
+        "transcription": _("Transcription failed: {error_detail}"),
+        "translation": _("Translation failed: {error_detail}"),
+        "embedding": _("Embedding failed: {error_detail}"),
+    }
+    template = templates.get(stage)
+    if template is None:
+        raise ValueError(f"Unsupported callback error stage: {stage}")
+    try:
+        return template.format(error_detail=error_detail)
+    except (KeyError, IndexError, ValueError):
+        # Translated template mangled the placeholder (seen on UAT as
+        # KeyError hiding the real callback error behind a 500): fall back
+        # to English with the detail intact, never raise here.
+        notify_exception(
+            Exception(f"Unformattable callback error template: {template!r}"),
+            "Callback error template mangled",
         )
-    if stage == "translation":
-        return _("Translation failed: {error_detail}").format(error_detail=error_detail)
-    if stage == "embedding":
-        return _("Embedding failed: {error_detail}").format(error_detail=error_detail)
-    raise ValueError(f"Unsupported callback error stage: {stage}")
+        return f"{template.split(':')[0]}: {error_detail}"
 
 
 def order_translations_by_target_language_order(
