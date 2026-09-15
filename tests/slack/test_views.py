@@ -718,7 +718,7 @@ class TestVideoConfigureMediaModal:
         )
         assert (
             _modal_block(modal, "word_transcript")["label"]["text"]
-            == "Native transcript copy"
+            == "Native transcript copy (.docx format)"
         )
 
     def test_workflow_type_dispatches_for_views_update(self):
@@ -882,7 +882,7 @@ class TestMediaSrtReplaceModal:
         assert modal["title"]["text"] == "Edit and reupload"
         assert file_block["label"]["text"] == "Replacement file"
         dumped = json.dumps(modal)
-        assert "edited subtitle file" in dumped
+        assert "Upload an edited subtitle file." in dumped
         assert "SRT" not in dumped
 
     def test_replace_modal_private_metadata_includes_language(self):

@@ -19,6 +19,9 @@ from app.translate import _
 AI_QUOTE_ADJUST_ACTION_ID = "evaluation_ai_quote_adjust"
 AI_QUOTE_ADJUST_CALLBACK_ID = "evaluation_ai_quote_adjust_submit"
 AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID = "evaluation_ai_quote_language_selection"
+AI_QUOTE_EMBED_SELECTION_ACTION_ID = "evaluation_ai_quote_embed_selection"
+EMBED_SOURCE_VALUE = "embed_source"
+EMBED_TRANSLATED_VALUE = "embed_translated"
 
 
 def pair_key(file_uuid: str, language_uuid: str) -> str:
@@ -522,6 +525,29 @@ def selected_pairs_from_view(view: dict[str, Any]) -> list[str]:
     return selected_pairs_from_values(
         selected_values(view, AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID)
     )
+
+
+def media_embed_toggles_from_view(view: dict[str, Any]) -> tuple[bool, bool] | None:
+    """Read media embedding toggles from a Quote2 Adjust modal view.
+
+    Returns ``(embed_source, embed_translated)``, or None when the view has
+    no embedding toggle block (other quote kinds).
+    """
+    found = False
+    selected: set[str] = set()
+    for block_data in (view.get("state") or {}).get("values", {}).values():
+        action_data = block_data.get(AI_QUOTE_EMBED_SELECTION_ACTION_ID)
+        if not action_data:
+            continue
+        found = True
+        selected.update(
+            str(option["value"])
+            for option in action_data.get("selected_options") or []
+            if option.get("value")
+        )
+    if not found:
+        return None
+    return EMBED_SOURCE_VALUE in selected, EMBED_TRANSLATED_VALUE in selected
 
 
 def quote_message_context_from_body(

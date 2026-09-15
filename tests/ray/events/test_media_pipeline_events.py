@@ -557,7 +557,7 @@ async def test_maybe_post_media_translation_quote_posts_review_when_configure_ga
     texts = [
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
-    assert any("Approve & Continue" in text or "Review" in text for text in texts)
+    assert any("Proceed" in text or "Review" in text for text in texts)
     posted_action_ids = [
         [
             el.get("action_id")
@@ -568,8 +568,8 @@ async def test_maybe_post_media_translation_quote_posts_review_when_configure_ga
     ]
     assert any("media_srt_replace" in ids for ids in posted_action_ids)
     assert any("media_srt_approve_continue" in ids for ids in posted_action_ids)
-    assert all(
-        not ("media_srt_replace" in ids and "media_srt_approve_continue" in ids)
+    assert any(
+        "media_srt_replace" in ids and "media_srt_approve_continue" in ids
         for ids in posted_action_ids
     )
 
@@ -834,7 +834,7 @@ async def test_handle_translation_complete_cancels_configure_when_undelivered():
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
     assert any("could not be delivered" in text for text in texts)
-    assert not any("Approve & Continue" in text or "Review" in text for text in texts)
+    assert not any("Proceed" in text or "Review" in text for text in texts)
 
 
 @pytest.mark.asyncio
@@ -1049,7 +1049,7 @@ async def test_handle_translation_complete_ignores_translated_word_ids(tmp_path)
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
     assert any(
-        text == "Your file is AI translated and can be downloaded above."
+        text == "AI translation is complete and your translation is ready to download."
         for text in texts
     )
     assert not any("could not be delivered" in text for text in texts)
@@ -1129,10 +1129,10 @@ async def test_handle_translation_complete_skips_mandatory_reupload_for_configur
     translated_lines = [
         text
         for text in texts
-        if "Your file is AI translated and can be downloaded above." in text
+        if "AI translation is complete and your translation is ready to download." in text
     ]
     assert len(translated_lines) == 1
-    assert "Approve & Continue" in translated_lines[0]
+    assert "Proceed" in translated_lines[0]
     assert not any("Review *" in text for text in texts)
 
 
@@ -1232,7 +1232,7 @@ async def test_handle_translation_complete_posts_replace_for_each_language(tmp_p
                         replace_values.append(el.get("value"))
         if "media_srt_approve_continue" in action_ids:
             assert "media_srt_replace" not in action_ids
-            assert "Your file is AI translated and can be downloaded above." in (
+            assert "AI translation is complete and your translation is ready to download." in (
                 call.kwargs.get("text") or ""
             )
             approve_count += 1
@@ -1429,7 +1429,7 @@ async def test_handle_translation_complete_names_failed_languages(tmp_path):
     assert "fr." not in naming_failure[0]
     # The plain success line is replaced, not duplicated alongside the warning.
     assert not any(
-        text == "Your file is AI translated and can be downloaded above."
+        text == "AI translation is complete and your translation is ready to download."
         for text in texts
     )
     # Delivered files still get the edit/reupload guidance.
@@ -1477,7 +1477,7 @@ async def test_handle_translation_complete_without_failed_languages_unchanged(tm
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
     assert any(
-        text == "Your file is AI translated and can be downloaded above."
+        text == "AI translation is complete and your translation is ready to download."
         for text in texts
     )
     assert not any("could not translate" in text for text in texts)

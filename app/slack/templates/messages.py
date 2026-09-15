@@ -3300,37 +3300,47 @@ class MediaSrtReviewMessage(SlackMessage):
 
 
 class MediaSrtApproveContinueMessage(SlackMessage):
-    def __init__(self, quote_id: str, *, translated: bool = False) -> None:
+    def __init__(
+        self,
+        quote_id: str,
+        *,
+        translated: bool = False,
+        include_replace: bool = False,
+    ) -> None:
         approve_button = ButtonElement(
-            text=PlainTextObject(text=_("Approve & Continue"), emoji=True),
+            text=PlainTextObject(text=_("Proceed"), emoji=True),
             action_id="media_srt_approve_continue",
             value=quote_id,
             style="primary",
         )
         if translated:
             review_text = _(
-                "Your file is AI translated and can be downloaded above.\n"
+                "AI translation is complete and your translation is ready to download.\n"
                 "Either press *Edit and reupload* to edit and replace a subtitle file,\n"
-                "or press *Approve & Continue* to submit this review."
+                "or press *Proceed* to continue."
             )
         else:
             review_text = _(
-                "Either press *Edit and reupload* to edit and replace the transcript,\n"
-                "or press *Approve & Continue* to submit this review."
+                "Either press *Edit and reupload* to edit and replace the transcript "
+                "(we continue automatically),\n"
+                "or press *Proceed* to continue."
             )
         review_section = SectionBlock(text=MarkdownTextObject(text=review_text))
-        actions = ActionsBlock(elements=[approve_button])
+        elements: list = [approve_button]
+        if include_replace and not translated:
+            elements.insert(
+                0,
+                ButtonElement(
+                    text=PlainTextObject(text=_("Edit and reupload"), emoji=True),
+                    action_id="media_srt_replace",
+                    value=quote_id,
+                ),
+            )
+        actions = ActionsBlock(elements=elements)
         super().__init__(
             review_text,
             [review_section.to_dict(), actions.to_dict()],
         )
-
-
-class MediaSrtReviewSubmittedMessage(SlackMessage):
-    def __init__(self, *, translated: bool = False) -> None:
-        text = _("Subtitles approved.") if translated else _("Transcript approved.")
-        section = SectionBlock(text=MarkdownTextObject(text=text))
-        super().__init__(text, [section.to_dict()])
 
 
 class DocumentMTJobMessage(SlackMessage):

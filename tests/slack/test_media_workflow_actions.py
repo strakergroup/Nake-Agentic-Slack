@@ -899,7 +899,7 @@ async def test_source_replace_auto_advances_without_approve_click():
     assert store["stage"] == "awaiting_translation_accept"
     mock_quote2.assert_awaited_once()
     posted = str(client.chat_postMessage.await_args_list)
-    assert "Continuing with your updated subtitles" in posted
+    assert "Replacement file received" not in posted
     assert "Click *Approve & Continue* when you are ready" not in posted
 
 
@@ -970,7 +970,7 @@ async def test_translated_replace_still_waits_for_approve_click():
     assert store["stage"] == "awaiting_translation_review"
     mock_quote2.assert_not_awaited()
     posted = str(client.chat_postMessage.await_args_list)
-    assert "Click *Approve & Continue* when you are ready" in posted
+    assert "Click *Proceed* when you are ready" in posted
 
 
 @pytest.mark.asyncio
@@ -1726,7 +1726,7 @@ async def test_post_srt_review_stores_message_timestamp():
     from app.slack.media_workflow_actions import _post_srt_review
 
     client = AsyncMock()
-    client.chat_postMessage = AsyncMock(side_effect=[{"ts": "9.9"}, {"ts": "9.10"}])
+    client.chat_postMessage = AsyncMock(return_value={"ts": "9.9"})
     session = {
         "quote_id": "q1",
         "channel_id": "C1",
@@ -1739,7 +1739,15 @@ async def test_post_srt_review_stores_message_timestamp():
     ) as mock_update:
         await _post_srt_review(client, session)
 
-    assert mock_update.await_args.args[1]["srt_review_message_ts"] == ["9.9", "9.10"]
+    assert mock_update.await_args.args[1]["srt_review_message_ts"] == ["9.9"]
+    posted = client.chat_postMessage.await_args.kwargs
+    action_ids = [
+        el.get("action_id")
+        for block in posted.get("blocks") or []
+        for el in block.get("elements", [])
+    ]
+    assert "media_srt_replace" in action_ids
+    assert "media_srt_approve_continue" in action_ids
 
 
 @pytest.mark.asyncio
@@ -1776,7 +1784,7 @@ async def test_approve_removes_review_buttons_after_submit():
             "app.slack.media_workflow_actions.update_media_quote_session",
             new_callable=AsyncMock,
             side_effect=lambda quote_id, updates: {**session, **updates},
-        ),
+        ) as mock_update,
         patch(
             "app.ray.events.media_pipeline_events.update_submission_status",
             new_callable=AsyncMock,
@@ -1791,23 +1799,19 @@ async def test_approve_removes_review_buttons_after_submit():
             context=context,
         )
 
-    client.chat_delete.assert_awaited_once_with(channel="C1", ts="10.1")
-    client.chat_update.assert_awaited_once()
-    updated = client.chat_update.await_args.kwargs
-    assert updated["ts"] == "10.2"
-    assert updated["channel"] == "C1"
-    assert updated["text"] == "Transcript approved."
-    action_ids = [
-        el.get("action_id")
-        for block in updated.get("blocks") or []
-        for el in block.get("elements", [])
-    ]
-    assert "media_srt_approve_continue" not in action_ids
-    assert "media_srt_replace" not in action_ids
+    deleted = sorted(
+        call.kwargs["ts"] for call in client.chat_delete.await_args_list
+    )
+    assert deleted == ["10.1", "10.2"]
+    client.chat_update.assert_not_awaited()
+    cleared = {}
+    for call in mock_update.await_args_list:
+        cleared.update(call.args[1])
+    assert cleared.get("srt_review_message_ts") == []
 
 
 @pytest.mark.asyncio
-async def test_approve_translated_review_says_subtitles_approved():
+async def test_approve_translated_review_removes_review_messages():
     from app.slack.media_workflow_actions import handle_media_srt_approve_continue
 
     client = AsyncMock()
@@ -1862,8 +1866,9 @@ async def test_approve_translated_review_says_subtitles_approved():
             context=context,
         )
 
-    updated = client.chat_update.await_args.kwargs
-    assert updated["text"] == "Subtitles approved."
+    updated = client.chat_delete.await_args_list
+    assert sorted(call.kwargs["ts"] for call in updated) == ["10.2"]
+    client.chat_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio

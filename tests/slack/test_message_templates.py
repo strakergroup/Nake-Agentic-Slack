@@ -34,7 +34,6 @@ from app.slack.templates.messages import (
     MediaEmbedOptionMessage,
     MediaSrtApproveContinueMessage,
     MediaSrtReviewMessage,
-    MediaSrtReviewSubmittedMessage,
     NewJobMessage,
     OnboardingMessage,
     RequiresMtTokenMessage,
@@ -1348,7 +1347,8 @@ class TestMediaSrtReviewMessage:
         assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
         assert not _blocks_contain_action(message.blocks, "media_srt_replace")
         dumped = json.dumps(message.blocks)
-        assert "Approve & Continue" in dumped
+        assert "Proceed" in dumped
+        assert "Approve & Continue" not in dumped
         assert "Edit and reupload" in dumped
         assert "Either press" in dumped
         assert "SRT" not in dumped
@@ -1356,27 +1356,23 @@ class TestMediaSrtReviewMessage:
     def test_translated_approve_uses_single_ai_translated_message(self):
         message = MediaSrtApproveContinueMessage("q-1", translated=True)
         dumped = json.dumps(message.blocks)
-        assert "Your file is AI translated and can be downloaded above." in dumped
+        assert "AI translation is complete and your translation is ready to download." in dumped
         assert "Edit and reupload" in dumped
-        assert "Approve & Continue" in dumped
+        assert "Proceed" in dumped
+        assert "Approve & Continue" not in dumped
         assert "Either press" in dumped
         assert "Review *" not in dumped
         assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
         assert not _blocks_contain_action(message.blocks, "media_srt_replace")
 
-    def test_submitted_message_says_transcript_approved(self):
-        message = MediaSrtReviewSubmittedMessage()
+    def test_source_review_combines_both_buttons_in_one_message(self):
+        message = MediaSrtApproveContinueMessage("q-1", include_replace=True)
         dumped = json.dumps(message.blocks)
-        assert "Transcript approved." in dumped
+        assert _blocks_contain_action(message.blocks, "media_srt_replace")
+        assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
+        assert "Proceed" in dumped
+        assert "Either press" in dumped
         assert "SRT" not in dumped
-
-    def test_submitted_message_says_subtitles_approved_for_translation(self):
-        message = MediaSrtReviewSubmittedMessage(translated=True)
-        dumped = json.dumps(message.blocks)
-        assert "Subtitles approved." in dumped
-        assert "Transcript approved." not in dumped
-        assert "SRT" not in dumped
-
 
 class TestJobTranscribedEventMessage:
     def test_transcribed_message_uses_file_plural(self):

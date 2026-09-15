@@ -44,6 +44,7 @@ from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSLATION_ACCEPT,
     STAGE_CANCELLED,
     get_media_quote_session,
+    source_embed_tokens_for_session,
     translated_embed_tokens_for_session,
     update_media_quote_session,
 )
@@ -71,6 +72,8 @@ async def persist_ai_quote_adjustment(
     context: RayContext,
     channel_id: str | None = None,
     message_ts: str | None = None,
+    embed_source: bool | None = None,
+    embed_translated: bool | None = None,
 ) -> bool:
     """Persist selection and refresh the original quote if it is still adjustable.
 
@@ -123,9 +126,26 @@ async def persist_ai_quote_adjustment(
         ):
             return False
         quote = media_translation_quote_from_session(session)
-        tokens = document_mt_tokens_for_pairs(
-            quote, pairs
-        ) + translated_embed_tokens_for_session(session, language_count=len(pairs))
+        resolved_embed_source = (
+            embed_source
+            if embed_source is not None
+            else bool(session.get("embed_source"))
+        )
+        resolved_embed_translated = (
+            embed_translated
+            if embed_translated is not None
+            else bool(session.get("embed_translated"))
+        )
+        merged = {
+            **session,
+            "embed_source": resolved_embed_source,
+            "embed_translated": resolved_embed_translated,
+        }
+        tokens = (
+            document_mt_tokens_for_pairs(quote, pairs)
+            + translated_embed_tokens_for_session(merged, language_count=len(pairs))
+            + source_embed_tokens_for_session(merged)
+        )
         resolved_channel_id = str(
             channel_id or session.get("channel_id") or context.get("channel_id") or ""
         )
@@ -138,6 +158,8 @@ async def persist_ai_quote_adjustment(
                 "selected_pairs": pairs,
                 "quote": quote,
                 "total_tokens": tokens,
+                "embed_source": resolved_embed_source,
+                "embed_translated": resolved_embed_translated,
                 "channel_id": resolved_channel_id or session.get("channel_id"),
                 "quote_message_ts": resolved_message_ts
                 or session.get("quote_message_ts"),

@@ -1,7 +1,12 @@
 """Tests for staged AI Translation quote adjustment helpers."""
 
+from typing import Any
+
 from app.slack.evaluation_ai_adjustment import (
+    AI_QUOTE_EMBED_SELECTION_ACTION_ID,
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
+    EMBED_SOURCE_VALUE,
+    EMBED_TRANSLATED_VALUE,
     colliding_evaluate_upload_filenames,
     estimated_pdf_file_language_costs,
     estimated_pdf_language_costs,
@@ -10,6 +15,7 @@ from app.slack.evaluation_ai_adjustment import (
     filter_job_to_pairs,
     filter_language_costs_by_pairs,
     language_costs_with_cancelled_status,
+    media_embed_toggles_from_view,
     pdf_adjusted_costs,
     pdf_costs_for_pairs,
     post_convert_filename_collision_message,
@@ -666,3 +672,88 @@ def test_update_modal_cost_blocks_keeps_deselected_checkboxes_unchecked():
     assert "initial_options" not in second
     assert "*Total cost:* USD 0.20" in updated["blocks"][2]["text"]["text"]
     assert "ai_quote_translation_cost_block" not in str(updated["blocks"])
+
+
+def _embed_view(*selected: str) -> dict[str, Any]:
+    return {
+        "state": {
+            "values": {
+                "ai_quote_embed": {
+                    AI_QUOTE_EMBED_SELECTION_ACTION_ID: {
+                        "selected_options": [{"value": value} for value in selected]
+                    }
+                }
+            }
+        }
+    }
+
+
+def test_media_embed_toggles_from_view_reads_selection():
+    assert media_embed_toggles_from_view(
+        _embed_view(EMBED_SOURCE_VALUE, EMBED_TRANSLATED_VALUE)
+    ) == (True, True)
+    assert media_embed_toggles_from_view(_embed_view(EMBED_SOURCE_VALUE)) == (
+        True,
+        False,
+    )
+    assert media_embed_toggles_from_view(_embed_view()) == (False, False)
+
+
+def test_media_embed_toggles_from_view_missing_block_returns_none():
+    assert media_embed_toggles_from_view({"state": {"values": {}}}) is None
+
+
+def test_ai_adjust_modal_shows_embed_toggles_for_media():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="media_translation",
+        language_costs=[
+            {
+                "file_uuid": "file-1",
+                "file_label": "clip.mp4",
+                "value": "lang-1",
+                "label": "French",
+                "token": 300,
+            },
+        ],
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=300,
+        source_embed_tokens=30,
+        show_embed_toggles=True,
+        embed_source=True,
+        embed_translated=False,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    toggles = [
+        element
+        for block in view["blocks"]
+        for element in block.get("elements") or []
+        if element.get("action_id") == AI_QUOTE_EMBED_SELECTION_ACTION_ID
+    ]
+    assert len(toggles) == 1
+    values = [option["value"] for option in toggles[0]["options"]]
+    assert values == [EMBED_SOURCE_VALUE, EMBED_TRANSLATED_VALUE]
+    assert toggles[0]["initial_options"] == [toggles[0]["options"][0]]
+    assert "*Total cost:* USD 6.60" in str(view["blocks"])
+
+
+def test_ai_adjust_modal_omits_embed_toggles_by_default():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="evaluate",
+        language_costs=[
+            {
+                "file_uuid": "file-1",
+                "file_label": "first.docx",
+                "value": "lang-1",
+                "label": "French",
+                "token": 25,
+            },
+        ],
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=25,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    assert AI_QUOTE_EMBED_SELECTION_ACTION_ID not in str(view["blocks"])

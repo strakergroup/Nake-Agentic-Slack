@@ -868,7 +868,7 @@ def media_translation_quote_blocks(
         language_costs=language_costs or None,
         intro_text="",
         source_label=(_("Source subtitle embedding") if source_tokens else None),
-        source_detail=(translated_embed_language_detail(1) if source_tokens else None),
+        source_detail=None,
         source_tokens=source_tokens or None,
         additional_label=(_("Translated subtitle embedding") if embed_tokens else None),
         additional_detail=(
@@ -1167,15 +1167,18 @@ def evaluation_credits_quote_blocks(
             }
         )
     if source_tokens and source_label:
+        source_text = (
+            f"*{source_label}:*\n{source_detail}"
+            if source_detail
+            else f"*{source_label}*"
+        )
         blocks.append(
             {
                 "type": "section",
                 "fields": [
                     {
                         "type": "mrkdwn",
-                        "text": (
-                            f"*{source_label}:*\n" f"{source_detail or source_label}"
-                        ),
+                        "text": source_text,
                     },
                     {
                         "type": "mrkdwn",

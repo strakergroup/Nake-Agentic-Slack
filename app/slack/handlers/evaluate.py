@@ -25,6 +25,7 @@ from app.slack.document_mt_quote_adjustment import (
 from app.slack.evaluation_ai_adjustment import (
     ai_scope_from_job,
     filter_job_to_pairs,
+    media_embed_toggles_from_view,
     quote_message_context_from_body,
     selected_pairs_from_view,
 )
@@ -503,6 +504,15 @@ async def handle_ai_quote_adjust_submit(
     quote_kind = str(metadata.get("quote_kind") or "")
     channel_id = str(metadata.get("channel_id") or context.get("channel_id") or "")
     message_ts = str(metadata.get("message_ts") or "") or None
+    toggles = (
+        media_embed_toggles_from_view(view)
+        if quote_kind == MEDIA_TRANSLATION_QUOTE_KIND
+        else None
+    )
+    persist_kwargs: dict[str, Any] = {}
+    if toggles is not None:
+        persist_kwargs["embed_source"] = toggles[0]
+        persist_kwargs["embed_translated"] = toggles[1]
     persisted = await persist_ai_quote_adjustment(
         client,
         quote_id=quote_id,
@@ -512,6 +522,7 @@ async def handle_ai_quote_adjust_submit(
         context=context,
         channel_id=channel_id or None,
         message_ts=message_ts,
+        **persist_kwargs,
     )
     if not persisted or not selected_pairs:
         return

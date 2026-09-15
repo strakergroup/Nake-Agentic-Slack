@@ -920,7 +920,9 @@ async def handle_translation_complete(
         elif not review_enabled:
             await client.chat_postMessage(
                 channel=channel_id,
-                text=_("Your file is AI translated and can be downloaded above."),
+                text=_(
+                    "AI translation is complete and your translation is ready to download."
+                ),
                 thread_ts=effective_thread_ts,
             )
         if extra.get("workflow_type"):

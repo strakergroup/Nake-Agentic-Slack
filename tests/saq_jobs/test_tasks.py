@@ -2089,7 +2089,7 @@ async def test_slack_upload_transcription_word_failure_still_delivers_srt_and_re
     assert result["status"] == "delivered"
     assert mock_upload.await_count == 1
     assert mock_upload.await_args.kwargs["filename"] == "clip.srt"
-    assert fake_client.chat_postMessage.await_count == 2
+    assert fake_client.chat_postMessage.await_count == 1
     assert mock_logger.exception.called
 
 
@@ -2161,23 +2161,16 @@ async def test_slack_upload_transcription_posts_srt_review_after_file(slack_user
             srt_review_quote_id="q1",
         )
 
-    assert fake_client.chat_postMessage.await_count == 2
+    assert fake_client.chat_postMessage.await_count == 1
     posted_calls = fake_client.chat_postMessage.await_args_list
     assert all(call.kwargs["thread_ts"] == "123.0" for call in posted_calls)
-    replace_ids = [
+    action_ids = [
         el.get("action_id")
         for block in posted_calls[0].kwargs.get("blocks") or []
         for el in block.get("elements", [])
     ]
-    approve_ids = [
-        el.get("action_id")
-        for block in posted_calls[1].kwargs.get("blocks") or []
-        for el in block.get("elements", [])
-    ]
-    assert "media_srt_replace" in replace_ids
-    assert "media_srt_approve_continue" not in replace_ids
-    assert "media_srt_approve_continue" in approve_ids
-    assert "media_srt_replace" not in approve_ids
+    assert "media_srt_replace" in action_ids
+    assert "media_srt_approve_continue" in action_ids
 
 
 @pytest.mark.asyncio

@@ -42,7 +42,10 @@ from ...slack.utils import format_strings_display
 from ..ai_quote_display import ai_language_cost_display_amounts
 from ..evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_CALLBACK_ID,
+    AI_QUOTE_EMBED_SELECTION_ACTION_ID,
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
+    EMBED_SOURCE_VALUE,
+    EMBED_TRANSLATED_VALUE,
 )
 from ..media_quotes import translated_embed_language_detail
 from ..select_options import (
@@ -937,6 +940,9 @@ def evaluation_ai_quote_adjust_modal(
     embed_tokens: int = 0,
     embed_language_count: int = 0,
     source_embed_tokens: int = 0,
+    show_embed_toggles: bool = False,
+    embed_source: bool = False,
+    embed_translated: bool = False,
     channel_id: str | None = None,
     message_ts: str | None = None,
 ) -> dict[str, Any]:
@@ -998,6 +1004,37 @@ def evaluation_ai_quote_adjust_modal(
             }
         )
     blocks.append({"type": "divider"})
+    if show_embed_toggles:
+        embed_options = [
+            {
+                "text": {"type": "mrkdwn", "text": f"*{_('Source subtitles')}*"},
+                "value": EMBED_SOURCE_VALUE,
+            },
+            {
+                "text": {"type": "mrkdwn", "text": f"*{_('Translated subtitles')}*"},
+                "value": EMBED_TRANSLATED_VALUE,
+            },
+        ]
+        toggled = set()
+        if embed_source:
+            toggled.add(EMBED_SOURCE_VALUE)
+        if embed_translated:
+            toggled.add(EMBED_TRANSLATED_VALUE)
+        embed_element: dict[str, Any] = {
+            "type": "checkboxes",
+            "options": embed_options,
+            "action_id": AI_QUOTE_EMBED_SELECTION_ACTION_ID,
+        }
+        initial = [opt for opt in embed_options if opt["value"] in toggled]
+        if initial:
+            embed_element["initial_options"] = initial
+        blocks.append(
+            {
+                "type": "actions",
+                "block_id": "ai_quote_embed_selection",
+                "elements": [embed_element],
+            }
+        )
     if pdf_tokens:
         blocks.append(
             {
@@ -1577,7 +1614,7 @@ def video_configure_media_modal(
     blocks.append(
         InputBlock(
             block_id="word_transcript",
-            label=PlainTextObject(text=_("Native transcript copy")),
+            label=PlainTextObject(text=_("Native transcript copy (.docx format)")),
             optional=True,
             element=StaticSelectElement(
                 action_id="word_transcript_format",
@@ -1630,11 +1667,7 @@ def media_srt_replace_modal(
         "close": {"type": "plain_text", "text": _("Cancel")},
         "blocks": [
             SectionBlock(
-                text=MarkdownTextObject(
-                    text=_(
-                        "Upload an edited subtitle file to replace the file currently under review."
-                    )
-                )
+                text=MarkdownTextObject(text=_("Upload an edited subtitle file."))
             ).to_dict(),
             file_input.to_dict(),
         ],

@@ -52,7 +52,6 @@ from app.slack.modal_trigger import (
 from app.slack.templates.messages import (
     MediaSrtApproveContinueMessage,
     MediaSrtReviewMessage,
-    MediaSrtReviewSubmittedMessage,
 )
 from app.slack.web import download_file, upload_file_to_slack_memory_efficient
 from app.translate import _
@@ -302,20 +301,10 @@ async def apply_thread_srt_review_replace(
                         client, {**session, **updates}, auto_decision
                     )
                     if completed is not None:
-                        await client.chat_postMessage(
-                            channel=str(session["channel_id"]),
-                            text=_(
-                                "Replacement file received. Continuing with "
-                                "your updated subtitles."
-                            ),
-                            thread_ts=session.get("thread_ts"),
-                        )
                         return True
         await client.chat_postMessage(
             channel=str(session["channel_id"]),
-            text=_(
-                "Replacement file received. Click *Approve & Continue* when you are ready."
-            ),
+            text=_("Replacement file received. Click *Proceed* when you are ready."),
             thread_ts=session.get("thread_ts"),
         )
         return True
@@ -376,7 +365,7 @@ async def _complete_source_approval(
             thread_ts=session.get("thread_ts"),
         )
         return None
-    await _clear_srt_review_actions(client, session, translated=False)
+    await _clear_srt_review_actions(client, session)
     return updated
 
 
@@ -459,7 +448,7 @@ async def handle_media_srt_approve_continue(
                 ),
             )
             return
-        await _clear_srt_review_actions(client, session, translated=translated)
+        await _clear_srt_review_actions(client, session)
     finally:
         await redis_conn.delete(lock_key)
 
@@ -660,6 +649,14 @@ async def _post_srt_review(
     language: str | None = None,
     file_label: str | None = None,
 ) -> None:
+    if language is None:
+        approve = MediaSrtApproveContinueMessage(
+            str(session["quote_id"]), include_replace=True
+        )
+        await _record_srt_review_ts(
+            client, session, text=approve.text, blocks=approve.blocks
+        )
+        return
     await _post_srt_file_replace(
         client, session, language=language, file_label=file_label
     )
@@ -667,7 +664,7 @@ async def _post_srt_review(
 
 
 async def _clear_srt_review_actions(
-    client: AsyncWebClient, session: dict[str, Any], *, translated: bool = False
+    client: AsyncWebClient, session: dict[str, Any]
 ) -> None:
     timestamps = [
         ts
@@ -676,19 +673,11 @@ async def _clear_srt_review_actions(
     ]
     channel_id = session.get("channel_id")
     if timestamps and channel_id:
-        *replace_ts, approve_ts = timestamps
-        for ts in replace_ts:
+        for ts in timestamps:
             try:
                 await client.chat_delete(channel=str(channel_id), ts=ts)
             except SlackApiError as exc:
                 notify_exception(exc)
-        submitted = MediaSrtReviewSubmittedMessage(translated=translated)
-        await client.chat_update(
-            channel=str(channel_id),
-            ts=approve_ts,
-            text=submitted.text,
-            blocks=submitted.blocks,
-        )
         await update_media_quote_session(
             str(session["quote_id"]), {"srt_review_message_ts": []}
         )
