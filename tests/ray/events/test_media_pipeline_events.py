@@ -753,7 +753,7 @@ async def test_maybe_post_media_translation_quote_posts_source_review_for_transl
 
 
 @pytest.mark.asyncio
-async def test_maybe_post_media_translation_quote_skips_review_when_not_embedding():
+async def test_maybe_post_media_translation_quote_posts_review_for_translate_without_embedding():
     from app.ray.events.media_pipeline_events import maybe_post_media_translation_quote
     from app.slack.media_quotes import PIPELINE_TRANSCRIBE_TRANSLATE, STAGE_TRANSCRIBING
 
@@ -806,8 +806,8 @@ async def test_maybe_post_media_translation_quote_skips_review_when_not_embeddin
         )
 
     assert posted is True
-    mock_post.assert_awaited_once()
-    client.chat_postMessage.assert_not_awaited()
+    mock_post.assert_not_awaited()
+    client.chat_postMessage.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -770,7 +770,11 @@ async def handle_transcription_complete(
             quote_id = extra_data.get("media_quote_id")
             source_review = bool(
                 extra_data.get("workflow_type")
-                and configure_srt_review_enabled(extra_data)
+                and (
+                    configure_srt_review_enabled(extra_data)
+                    or extra_data.get("workflow_type")
+                    == MediaWorkflowType.TRANSCRIBE_TRANSLATE.value
+                )
                 and quote_id
             )
             if source_review:
