@@ -24,6 +24,7 @@ from .document_mt_quote_adjustment import DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID
 from .evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_ACTION_ID,
     AI_QUOTE_ADJUST_CALLBACK_ID,
+    AI_QUOTE_EMBED_SELECTION_ACTION_ID,
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
 )
 from .evaluation_combined_quotes import COMBINED_QE_HUMAN_QUOTE_ACCEPT_ACTION_ID
@@ -701,6 +702,7 @@ async def evaluation_ai_quote_adjust_action(
 
 
 @app.block_action(AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID)
+@app.block_action(AI_QUOTE_EMBED_SELECTION_ACTION_ID)
 @slack_log_decorator
 async def evaluation_ai_quote_adjust_selection_action(
     ack: AsyncAck,
