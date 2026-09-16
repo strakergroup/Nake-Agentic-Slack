@@ -1036,8 +1036,15 @@ def evaluation_ai_quote_adjust_modal(
         )
     blocks.append({"type": "divider"})
     if show_embed_toggles:
+        if source_embed_tokens:
+            source_text = (
+                f"*{_('Embed Source subtitles')}:* "
+                f"{_format_evaluate_quote_cost(source_embed_tokens)}"
+            )
+        else:
+            source_text = f"*{_('Source subtitles')}*"
         source_option = {
-            "text": {"type": "mrkdwn", "text": f"*{_('Source subtitles')}*"},
+            "text": {"type": "mrkdwn", "text": source_text},
             "value": EMBED_SOURCE_VALUE,
         }
         source_element: dict[str, Any] = {

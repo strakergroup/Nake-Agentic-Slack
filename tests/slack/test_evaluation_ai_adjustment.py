@@ -893,3 +893,20 @@ def test_ai_adjust_modal_evaluate_omits_ai_translation_row():
         message_ts="111.222",
     )
     assert "AI Translation:* USD" not in str(view["blocks"])
+
+
+def test_ai_adjust_modal_source_toggle_shows_cost():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="media_translation",
+        language_costs=_media_costs(),
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=300,
+        source_embed_tokens=30,
+        show_embed_toggles=True,
+        embed_source=True,
+        embed_languages=[],
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    assert "Embed Source subtitles:* USD 0.60" in str(view["blocks"])
