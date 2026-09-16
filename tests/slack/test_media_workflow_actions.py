@@ -754,7 +754,7 @@ async def test_approve_source_srt_quote2_includes_source_embed_when_selected():
 
 
 @pytest.mark.asyncio
-async def test_approve_source_srt_posts_deferred_word_transcript():
+async def test_approve_source_srt_defers_word_past_approval():
     from app.slack.media_workflow_actions import handle_media_srt_approve_continue
 
     client = AsyncMock()
@@ -815,14 +815,65 @@ async def test_approve_source_srt_posts_deferred_word_transcript():
             context=context,
         )
 
+    mock_word.assert_not_awaited()
+    for call in mock_update.await_args_list:
+        assert "deferred_word_file_id" not in call.args[1]
+        assert "deferred_word_file_name" not in call.args[1]
+
+
+@pytest.mark.asyncio
+async def test_mark_done_posts_deferred_word_with_native_copy_caption():
+    from app.media.media_workflow import (
+        MediaWorkflowEvent,
+        advance_media_workflow,
+        media_workflow_session_from_quote,
+    )
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    session = {
+        "quote_id": "q1",
+        "stage": "awaiting_source_review",
+        "workflow_type": "transcribe_only",
+        "embed_source": False,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": [],
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+        "submission_ids": [42],
+        "deferred_word_file_id": "docx-1",
+        "deferred_word_file_name": "clip.docx",
+    }
+    decision = advance_media_workflow(
+        media_workflow_session_from_quote(session),
+        MediaWorkflowEvent.SOURCE_SRT_APPROVED,
+    )
+    client = AsyncMock()
+    with (
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.update_submission_status",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.slack.media_workflow_actions.post_deferred_word_transcript",
+            new_callable=AsyncMock,
+        ) as mock_word,
+    ):
+        await execute_media_workflow_decision(
+            client=client, session=session, decision=decision
+        )
+
     mock_word.assert_awaited_once()
     assert mock_word.await_args.kwargs["word_file_id"] == "docx-1"
     assert mock_word.await_args.kwargs["word_file_name"] == "clip.docx"
-    cleared = {}
-    for call in mock_update.await_args_list:
-        cleared.update(call.args[1])
-    assert cleared.get("deferred_word_file_id") is None
-    assert cleared.get("deferred_word_file_name") is None
+    assert (
+        mock_word.await_args.kwargs["initial_comment"] == "Native transcript copy"
+    )
 
 
 @pytest.mark.asyncio
@@ -971,71 +1022,6 @@ async def test_translated_replace_still_waits_for_approve_click():
     mock_quote2.assert_not_awaited()
     posted = str(client.chat_postMessage.await_args_list)
     assert "Click *Proceed* when you are ready" in posted
-
-
-@pytest.mark.asyncio
-async def test_approve_source_srt_posts_word_before_quote2():
-    from app.slack.media_workflow_actions import handle_media_srt_approve_continue
-
-    client = AsyncMock()
-    context = MagicMock()
-    context.__getitem__ = lambda self, key: {"user_id": "U1", "team_id": "T1"}[key]
-    context.get = lambda key, default=None: None
-    session = {
-        "quote_id": "q1",
-        "user_id": "U1",
-        "stage": "awaiting_source_review",
-        "workflow_type": "transcribe_translate",
-        "embed_source": False,
-        "embed_translated": True,
-        "review_gate": True,
-        "target_languages": ["es"],
-        "target_language_names": ["Spanish"],
-        "source_text_length": 500,
-        "duration_ms": 60_000,
-        "file_id": "F1",
-        "file_name": "clip.mp4",
-        "channel_id": "C1",
-        "thread_ts": "1.2",
-        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
-        "deferred_word_file_id": "docx-1",
-        "deferred_word_file_name": "clip.docx",
-    }
-    events: list[str] = []
-    with (
-        patch(
-            "app.slack.media_workflow_actions.get_media_quote_session",
-            new_callable=AsyncMock,
-            return_value=session,
-        ),
-        patch(
-            "app.slack.media_workflow_actions.update_media_quote_session",
-            new_callable=AsyncMock,
-            side_effect=lambda quote_id, updates: {**session, **updates},
-        ),
-        patch(
-            "app.slack.media_workflow_actions.post_media_quote_message",
-            new=AsyncMock(side_effect=lambda *a, **k: events.append("quote2")),
-        ),
-        patch(
-            "app.slack.media_workflow_actions.auto_accept_media_translation_quote_if_needed",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "app.slack.media_workflow_actions.post_deferred_word_transcript",
-            new=AsyncMock(side_effect=lambda *a, **k: events.append("word")),
-        ),
-        patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
-    ):
-        mock_redis.set = AsyncMock(return_value=True)
-        mock_redis.delete = AsyncMock()
-        await handle_media_srt_approve_continue(
-            client=client,
-            action={"value": "q1"},
-            context=context,
-        )
-
-    assert events == ["word", "quote2"]
 
 
 @pytest.mark.asyncio

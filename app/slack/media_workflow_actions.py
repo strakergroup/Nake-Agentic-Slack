@@ -73,6 +73,7 @@ async def post_deferred_word_transcript(
     word_file_name: str,
     channel_id: str,
     thread_ts: str | None,
+    initial_comment: str | None = None,
 ) -> None:
     """Upload a Word transcript withheld until its SRT was approved.
 
@@ -98,6 +99,7 @@ async def post_deferred_word_transcript(
             channel_id=channel_id,
             title=word_file_name,
             filename=word_file_name,
+            initial_comment=initial_comment,
             thread_ts=thread_ts,
         )
     except Exception:
@@ -315,8 +317,9 @@ async def apply_thread_srt_review_replace(
 async def _post_deferred_word_transcript_if_needed(
     client: AsyncWebClient,
     session: dict[str, Any],
+    initial_comment: str | None = None,
 ) -> None:
-    """Upload a Word transcript withheld until its SRT was approved."""
+    """Upload a Word transcript withheld for end-of-flow delivery."""
     word_file_id = session.get("deferred_word_file_id")
     word_file_name = session.get("deferred_word_file_name")
     if not word_file_id or not word_file_name:
@@ -327,6 +330,7 @@ async def _post_deferred_word_transcript_if_needed(
         word_file_name=str(word_file_name),
         channel_id=str(session.get("channel_id") or ""),
         thread_ts=session.get("thread_ts"),
+        initial_comment=initial_comment,
     )
     await update_media_quote_session(
         str(session["quote_id"]),
@@ -341,14 +345,9 @@ async def _complete_source_approval(
 ) -> dict[str, Any] | None:
     """Run the source-approval follow-on shared by Approve and auto-advance.
 
-    The deferred Word transcript uploads before the decision executes so the
-    source files land in the thread ahead of Quote 2. Word delivery is
-    best-effort and never raises, so a failure still proceeds to Quote 2.
-
     Returns the updated session, or None when the follow-on posted its own
     error message and the caller should stop.
     """
-    await _post_deferred_word_transcript_if_needed(client, session)
     try:
         updated = await execute_media_workflow_decision(
             client=client,
@@ -581,6 +580,9 @@ async def execute_media_workflow_decision(
         from app.ray.events.media_pipeline_events import update_submission_status
 
         await update_submission_status(updated)
+        await _post_deferred_word_transcript_if_needed(
+            client, updated, initial_comment=_("Native transcript copy")
+        )
     return updated
 
 

@@ -131,6 +131,16 @@ def _configure_embed_tracks(
     translated_ids, translated_langs = _ordered_translated_tracks(
         ids_map, list(session.get("target_languages") or language_codes)
     )
+    stored_embed_languages = session.get("embed_languages")
+    if stored_embed_languages is not None:
+        wanted = {str(code) for code in stored_embed_languages}
+        kept = [
+            (file_id, lang)
+            for file_id, lang in zip(translated_ids, translated_langs, strict=True)
+            if lang in wanted
+        ]
+        translated_ids = [file_id for file_id, _ in kept]
+        translated_langs = [lang for _, lang in kept]
     if not session.get("embed_source"):
         return translated_ids or None, translated_langs, translated_langs
     source_id = session.get("approved_source_srt_file_id") or task.result_file_id

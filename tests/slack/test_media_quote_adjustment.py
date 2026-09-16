@@ -628,13 +628,13 @@ class TestPersistMediaTranslationQuoteAdjustment:
                 channel_id="C1",
                 message_ts="111.222",
                 embed_source=False,
-                embed_translated=True,
+                embed_pairs=["Fmedia:es", "Fmedia:fr"],
             )
 
         assert persisted is True
         updates = mock_update_session.await_args.args[1]
         assert updates["embed_source"] is False
-        assert updates["embed_translated"] is True
+        assert updates["embed_languages"] == ["es", "fr"]
         assert updates["total_tokens"] == (
             media_translation_tokens(150000, 2)
             + embedding_tokens_for_duration(60_000, 2)
@@ -683,3 +683,114 @@ class TestPersistMediaTranslationQuoteAdjustment:
             mock_update_message.await_args.kwargs["status_message"]
             == "AI Translate quote cancelled."
         )
+
+
+@pytest.mark.asyncio
+class TestPersistPerLanguageEmbedSelection:
+    async def test_persist_embeds_only_ticked_languages(self):
+        client = AsyncMock()
+        session = _session(
+            embed_source=False, embed_translated=True, duration_ms=60_000
+        )
+        with (
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.get_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ) as mock_update_session,
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_media_translation_quote_slack_message",
+                new_callable=AsyncMock,
+            ),
+        ):
+            persisted = await persist_ai_quote_adjustment(
+                client,
+                quote_id="quote-1",
+                quote_kind="media_translation",
+                selected_pairs=["Fmedia:es", "Fmedia:fr"],
+                user_id="U1",
+                context={},
+                channel_id="C1",
+                message_ts="111.222",
+                embed_source=False,
+                embed_pairs=["Fmedia:es"],
+            )
+
+        assert persisted is True
+        updates = mock_update_session.await_args.args[1]
+        assert updates["embed_languages"] == ["es"]
+        assert updates["embed_translated"] is True
+        assert updates["total_tokens"] == (
+            media_translation_tokens(150000, 2)
+            + embedding_tokens_for_duration(60_000, 1)
+        )
+
+
+class TestMediaQuote2RequiredTokensPerLanguage:
+    def test_counts_only_embed_selected_languages(self):
+        session = _session(
+            embed_source=False,
+            embed_translated=True,
+            embed_languages=["fr"],
+            duration_ms=60_000,
+        )
+        tokens = media_quote2_required_tokens(session, ["Fmedia:es", "Fmedia:fr"])
+        assert tokens == media_translation_tokens(
+            150000, 2
+        ) + embedding_tokens_for_duration(60_000, 1)
+
+
+@pytest.mark.asyncio
+class TestRefreshPerLanguageEmbedSelection:
+    async def test_refresh_counts_only_ticked_languages(self):
+        view = {
+            "id": "view-1",
+            "state": {
+                "values": {
+                    "ai_quote_language_Fmedia_es": {
+                        "evaluation_ai_quote_language_selection": {
+                            "selected_options": [
+                                {"value": "Fmedia:es"},
+                                {"value": "Fmedia:fr"},
+                            ],
+                        }
+                    },
+                    "ai_quote_embed": {
+                        "evaluation_ai_quote_embed_selection": {
+                            "selected_options": [{"value": "Fmedia:es"}],
+                        }
+                    },
+                }
+            },
+            "blocks": [
+                {
+                    "block_id": "ai_quote_embed_cost_block",
+                    "text": {"type": "mrkdwn", "text": ""},
+                },
+                {
+                    "block_id": "total_cost_block",
+                    "text": {"type": "mrkdwn", "text": ""},
+                },
+            ],
+        }
+        client = AsyncMock()
+        with patch(
+            "app.slack.evaluation_ai_quote_modal_service.get_media_quote_session",
+            new_callable=AsyncMock,
+            return_value=_session(embed_translated=True, duration_ms=60_000),
+        ):
+            await refresh_ai_quote_adjustment_cost(
+                client,
+                view=view,
+                quote_id="quote-1",
+                quote_kind="media_translation",
+            )
+
+        updated = str(client.views_update.await_args.kwargs["view"]["blocks"])
+        assert "1 language" in updated
+        assert "*Total cost:* USD 12.60" in updated

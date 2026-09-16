@@ -10,6 +10,7 @@ from app.ray.events.models import JobQuoteCreatedEvent
 from app.slack.ai_quote_display import ai_language_cost_display_amounts
 from app.slack.document_mt_quote_adjustment import (
     DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID,
+    document_mt_all_pairs,
     document_mt_language_costs,
     document_mt_language_costs_with_cancelled,
     document_mt_pdf_pages_for_pairs,
@@ -18,6 +19,7 @@ from app.slack.document_mt_quote_adjustment import (
 )
 from app.slack.media_quote_adjustment import (
     MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID,
+    media_embed_languages,
     media_selected_target_languages,
     media_translation_language_costs,
     media_translation_quote_from_session,
@@ -846,9 +848,12 @@ def media_translation_quote_blocks(
             language_costs, selected_pairs
         )
         translation_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
+    else:
+        selected_pairs = document_mt_all_pairs(quote)
     selected_languages = media_selected_target_languages(session)
+    embed_codes = media_embed_languages(session, selected_pairs)
     embed_tokens = translated_embed_tokens_for_session(
-        session, language_count=len(selected_languages)
+        session, language_count=len(embed_codes)
     )
     source_tokens = source_embed_tokens_for_session(session)
 
@@ -872,9 +877,7 @@ def media_translation_quote_blocks(
         source_tokens=source_tokens or None,
         additional_label=(_("Translated subtitle embedding") if embed_tokens else None),
         additional_detail=(
-            translated_embed_language_detail(len(selected_languages))
-            if embed_tokens
-            else None
+            translated_embed_language_detail(len(embed_codes)) if embed_tokens else None
         ),
         additional_tokens=embed_tokens or None,
     )

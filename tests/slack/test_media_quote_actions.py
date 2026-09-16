@@ -1459,3 +1459,26 @@ def test_media_transcribe_wait_text_uses_file_plural():
     assert "AI Translation quote" in media_transcribe_wait_text(
         PIPELINE_TRANSCRIBE_TRANSLATE_EMBED
     )
+
+
+def test_translated_embed_tracks_only_embed_selected_languages():
+    from app.slack.media_configure_embed import _configure_embed_tracks
+
+    task = SimpleNamespace(
+        result_file_id="srt-source",
+        translated_file_ids={"fi": "srt-fi", "es": "srt-es"},
+        detected_language="en",
+    )
+    ids, langs, billing = _configure_embed_tracks(
+        session={
+            "embed_source": False,
+            "embed_translated": True,
+            "embed_languages": ["es"],
+            "target_languages": ["fi", "es"],
+        },
+        task=task,
+        translated=True,
+    )
+    assert ids == ["srt-es"]
+    assert langs == ["es"]
+    assert billing == ["es"]

@@ -176,6 +176,65 @@ async def test_handle_transcription_complete_withholds_word_when_review_pending(
 
 
 @pytest.mark.asyncio
+async def test_handle_transcription_complete_withholds_word_for_translate_without_review():
+    from app.ray.events.media_pipeline_events import handle_transcription_complete
+
+    client = AsyncMock()
+    task_info = SimpleNamespace(
+        task_uuid="task-1",
+        file_name="clip.mp4",
+        pipeline_type="transcribe",
+        extra_data={
+            "media_quote_id": "q1",
+            "workflow_type": "transcribe_translate",
+            "word_source_file_id": "docx-1",
+            "slack_team_id": "T1",
+            "slack_user_id": "U1",
+        },
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(ray_client_id="client-1"))
+    auth_slack_user = SimpleNamespace(channel_id="C1")
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.post_notification",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.enqueue_transcription_upload",
+            new=AsyncMock(),
+        ) as mock_enqueue,
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value={"workflow_type": "transcribe_translate"}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new=AsyncMock(),
+        ) as mock_update,
+    ):
+        await handle_transcription_complete(
+            client,
+            "file-1",
+            "clip.srt",
+            task_info,
+            False,
+            "C1",
+            "123.456",
+            MagicMock(),
+            auth,
+            auth_slack_user,
+        )
+
+    mock_enqueue.assert_awaited_once()
+    assert mock_enqueue.await_args.kwargs.get("word_file_id") is None
+    deferred = {}
+    for call in mock_update.await_args_list:
+        deferred.update(call.args[1])
+    assert deferred.get("deferred_word_file_id") == "docx-1"
+
+
+@pytest.mark.asyncio
 async def test_handle_transcription_complete_does_not_record_zip_entries():
     from app.ray.events.media_pipeline_events import handle_transcription_complete
 

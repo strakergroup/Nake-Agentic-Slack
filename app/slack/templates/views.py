@@ -45,7 +45,6 @@ from ..evaluation_ai_adjustment import (
     AI_QUOTE_EMBED_SELECTION_ACTION_ID,
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
     EMBED_SOURCE_VALUE,
-    EMBED_TRANSLATED_VALUE,
 )
 from ..media_quotes import translated_embed_language_detail
 from ..select_options import (
@@ -942,12 +941,13 @@ def evaluation_ai_quote_adjust_modal(
     source_embed_tokens: int = 0,
     show_embed_toggles: bool = False,
     embed_source: bool = False,
-    embed_translated: bool = False,
+    embed_languages: list[str] | None = None,
     channel_id: str | None = None,
     message_ts: str | None = None,
 ) -> dict[str, Any]:
     """Build a staged AI quote modal with per-file language selection."""
     selected = set(selected_pairs)
+    tick_embed = {str(code) for code in (embed_languages or [])}
     blocks: list[dict[str, Any]] = [
         {
             "type": "section",
@@ -996,44 +996,45 @@ def evaluation_ai_quote_adjust_modal(
         }
         if option_value in selected:
             element["initial_options"] = [option]
+        elements = [element]
+        if show_embed_toggles:
+            embed_option = {
+                "text": {"type": "mrkdwn", "text": f"*{_('Embed')}*"},
+                "value": option_value,
+            }
+            embed_element: dict[str, Any] = {
+                "type": "checkboxes",
+                "options": [embed_option],
+                "action_id": AI_QUOTE_EMBED_SELECTION_ACTION_ID,
+            }
+            if language_uuid in tick_embed:
+                embed_element["initial_options"] = [embed_option]
+            elements.append(embed_element)
         blocks.append(
             {
                 "type": "actions",
                 "block_id": f"ai_quote_language_{file_uuid or 'all'}_{language_uuid}",
-                "elements": [element],
+                "elements": elements,
             }
         )
     blocks.append({"type": "divider"})
     if show_embed_toggles:
-        embed_options = [
-            {
-                "text": {"type": "mrkdwn", "text": f"*{_('Source subtitles')}*"},
-                "value": EMBED_SOURCE_VALUE,
-            },
-            {
-                "text": {"type": "mrkdwn", "text": f"*{_('Translated subtitles')}*"},
-                "value": EMBED_TRANSLATED_VALUE,
-            },
-        ]
-        toggled = [
-            option
-            for option, selected in zip(
-                embed_options, (embed_source, embed_translated), strict=True
-            )
-            if selected
-        ]
-        embed_element = {
+        source_option = {
+            "text": {"type": "mrkdwn", "text": f"*{_('Source subtitles')}*"},
+            "value": EMBED_SOURCE_VALUE,
+        }
+        source_element: dict[str, Any] = {
             "type": "checkboxes",
-            "options": embed_options,
+            "options": [source_option],
             "action_id": AI_QUOTE_EMBED_SELECTION_ACTION_ID,
         }
-        if toggled:
-            embed_element["initial_options"] = toggled
+        if embed_source:
+            source_element["initial_options"] = [source_option]
         blocks.append(
             {
                 "type": "actions",
-                "block_id": "ai_quote_embed_selection",
-                "elements": [embed_element],
+                "block_id": "ai_quote_embed_source",
+                "elements": [source_element],
             }
         )
     if pdf_tokens:

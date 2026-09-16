@@ -38,6 +38,8 @@ from app.slack.evaluation_quotes import (
 )
 from app.slack.media_quote_adjustment import (
     MEDIA_TRANSLATION_QUOTE_KIND,
+    media_embed_languages,
+    media_embed_pair_codes,
     media_quote_message_ts,
     media_translation_language_costs,
     media_translation_quote_from_session,
@@ -165,7 +167,7 @@ async def populate_ai_quote_adjustment_modal(
                 source_embed_tokens=source_embed_tokens_for_session(session),
                 show_embed_toggles=True,
                 embed_source=bool(session.get("embed_source")),
-                embed_translated=bool(session.get("embed_translated")),
+                embed_languages=media_embed_languages(session, selected_pairs),
                 channel_id=resolved_channel_id or None,
                 message_ts=resolved_message_ts,
             ),
@@ -367,12 +369,15 @@ async def refresh_ai_quote_adjustment_cost(
         toggles = media_embed_toggles_from_view(view)
         merged = dict(session)
         if toggles is not None:
-            merged["embed_source"] = toggles[0]
-            merged["embed_translated"] = toggles[1]
+            embed_source_on, embed_pairs = toggles
+            merged["embed_source"] = embed_source_on
+            merged["embed_languages"] = media_embed_pair_codes(session, embed_pairs)
+        embed_codes = media_embed_languages(merged, selected_pairs)
+        merged["embed_translated"] = bool(embed_codes)
         embed_tokens = translated_embed_tokens_for_session(
-            merged, language_count=len(selected_pairs)
+            merged, language_count=len(embed_codes)
         )
-        embed_language_count = len(selected_pairs) if embed_tokens else 0
+        embed_language_count = len(embed_codes) if embed_tokens else 0
         source_embed_tokens = source_embed_tokens_for_session(merged)
     elif quote_kind == "pdf_prequote":
         session = await get_pdf_evaluate_quote_session(quote_id)

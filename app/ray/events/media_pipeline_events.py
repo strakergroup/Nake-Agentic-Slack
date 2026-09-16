@@ -784,18 +784,28 @@ async def handle_transcription_complete(
             word_file_name = (
                 f"{Path(result_file_name).stem}.docx" if word_file_id else None
             )
-            if srt_review_quote_id and word_file_id and word_file_name:
-                # Review pending: withhold the Word transcript until the SRT
-                # is approved, then deliver it from the approval handler.
-                await update_media_quote_session(
-                    srt_review_quote_id,
-                    {
-                        "deferred_word_file_id": str(word_file_id),
-                        "deferred_word_file_name": word_file_name,
-                    },
+            if word_file_id and word_file_name and (
+                srt_review_quote_id is not None
+                or extra_data.get("workflow_type")
+                == MediaWorkflowType.TRANSCRIBE_TRANSLATE.value
+            ):
+                # Translate flows deliver the Word transcript with the final
+                # step: withhold it here and stash it on the session for the
+                # MARK_DONE handler. Transcribe-only has no later step, so it
+                # still delivers immediately below.
+                quote_key = srt_review_quote_id or (
+                    str(quote_id) if quote_id else None
                 )
-                word_file_id = None
-                word_file_name = None
+                if quote_key:
+                    await update_media_quote_session(
+                        quote_key,
+                        {
+                            "deferred_word_file_id": str(word_file_id),
+                            "deferred_word_file_name": word_file_name,
+                        },
+                    )
+                    word_file_id = None
+                    word_file_name = None
             await enqueue_transcription_upload(
                 file_id=result_file_id,
                 file_name=result_file_name,

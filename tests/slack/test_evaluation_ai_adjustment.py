@@ -6,7 +6,6 @@ from app.slack.evaluation_ai_adjustment import (
     AI_QUOTE_EMBED_SELECTION_ACTION_ID,
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
     EMBED_SOURCE_VALUE,
-    EMBED_TRANSLATED_VALUE,
     colliding_evaluate_upload_filenames,
     estimated_pdf_file_language_costs,
     estimated_pdf_language_costs,
@@ -690,13 +689,13 @@ def _embed_view(*selected: str) -> dict[str, Any]:
 
 def test_media_embed_toggles_from_view_reads_selection():
     assert media_embed_toggles_from_view(
-        _embed_view(EMBED_SOURCE_VALUE, EMBED_TRANSLATED_VALUE)
-    ) == (True, True)
+        _embed_view(EMBED_SOURCE_VALUE, "Fmedia:es")
+    ) == (True, {"Fmedia:es"})
     assert media_embed_toggles_from_view(_embed_view(EMBED_SOURCE_VALUE)) == (
         True,
-        False,
+        set(),
     )
-    assert media_embed_toggles_from_view(_embed_view()) == (False, False)
+    assert media_embed_toggles_from_view(_embed_view()) == (False, set())
 
 
 def test_media_embed_toggles_from_view_missing_block_returns_none():
@@ -721,7 +720,7 @@ def test_ai_adjust_modal_shows_embed_toggles_for_media():
         source_embed_tokens=30,
         show_embed_toggles=True,
         embed_source=True,
-        embed_translated=False,
+        embed_languages=["lang-1"],
         channel_id="C1",
         message_ts="111.222",
     )
@@ -731,10 +730,15 @@ def test_ai_adjust_modal_shows_embed_toggles_for_media():
         for element in block.get("elements") or []
         if element.get("action_id") == AI_QUOTE_EMBED_SELECTION_ACTION_ID
     ]
-    assert len(toggles) == 1
-    values = [option["value"] for option in toggles[0]["options"]]
-    assert values == [EMBED_SOURCE_VALUE, EMBED_TRANSLATED_VALUE]
-    assert toggles[0]["initial_options"] == [toggles[0]["options"][0]]
+    assert len(toggles) == 2
+    per_language = toggles[0]
+    assert [option["value"] for option in per_language["options"]] == ["file-1:lang-1"]
+    assert per_language["initial_options"] == per_language["options"]
+    source_toggle = toggles[1]
+    assert [option["value"] for option in source_toggle["options"]] == [
+        EMBED_SOURCE_VALUE
+    ]
+    assert source_toggle["initial_options"] == source_toggle["options"]
     assert "*Total cost:* USD 6.60" in str(view["blocks"])
 
 
@@ -762,7 +766,10 @@ def test_ai_adjust_modal_omits_embed_toggles_by_default():
 def test_update_modal_cost_blocks_syncs_embed_toggle_initials():
     from app.slack.evaluation_ai_adjustment import update_modal_cost_blocks
 
-    option_source = {"text": {"type": "mrkdwn", "text": "*Source*"}, "value": "embed_source"}
+    option_source = {
+        "text": {"type": "mrkdwn", "text": "*Source*"},
+        "value": "embed_source",
+    }
     option_translated = {
         "text": {"type": "mrkdwn", "text": "*Translated*"},
         "value": "embed_translated",

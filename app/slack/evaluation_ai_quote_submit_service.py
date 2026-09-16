@@ -37,6 +37,8 @@ from app.slack.evaluation_quotes import (
 from app.slack.media_quote_actions import update_media_translation_quote_slack_message
 from app.slack.media_quote_adjustment import (
     MEDIA_TRANSLATION_QUOTE_KIND,
+    media_embed_languages,
+    media_embed_pair_codes,
     media_quote_message_ts,
     media_selected_target_language_names,
     media_selected_target_languages,
@@ -75,7 +77,7 @@ async def persist_ai_quote_adjustment(
     channel_id: str | None = None,
     message_ts: str | None = None,
     embed_source: bool | None = None,
-    embed_translated: bool | None = None,
+    embed_pairs: list[str] | None = None,
 ) -> bool:
     """Persist selection and refresh the original quote if it is still adjustable.
 
@@ -130,24 +132,28 @@ async def persist_ai_quote_adjustment(
         quote = media_translation_quote_from_session(session)
         selected_codes = media_selected_target_languages(session, selected_pairs=pairs)
         selected_names = media_selected_target_language_names(session, selected_codes)
+        if embed_pairs is None:
+            embed_codes = media_embed_languages(session, pairs)
+        else:
+            wanted = set(media_embed_pair_codes(session, embed_pairs))
+            embed_codes = [code for code in selected_codes if code in wanted]
         resolved_embed_source = (
             embed_source
             if embed_source is not None
             else bool(session.get("embed_source"))
         )
-        resolved_embed_translated = (
-            embed_translated
-            if embed_translated is not None
-            else bool(session.get("embed_translated"))
-        )
+        resolved_embed_translated = bool(embed_codes)
         merged = {
             **session,
             "embed_source": resolved_embed_source,
             "embed_translated": resolved_embed_translated,
+            "embed_languages": embed_codes,
         }
         tokens = (
             document_mt_tokens_for_pairs(quote, pairs)
-            + translated_embed_tokens_for_session(merged, language_count=len(pairs))
+            + translated_embed_tokens_for_session(
+                merged, language_count=len(embed_codes)
+            )
             + source_embed_tokens_for_session(merged)
         )
         resolved_channel_id = str(
@@ -166,6 +172,7 @@ async def persist_ai_quote_adjustment(
                 "target_language_names": selected_names,
                 "embed_source": resolved_embed_source,
                 "embed_translated": resolved_embed_translated,
+                "embed_languages": embed_codes,
                 "channel_id": resolved_channel_id or session.get("channel_id"),
                 "quote_message_ts": resolved_message_ts
                 or session.get("quote_message_ts"),
