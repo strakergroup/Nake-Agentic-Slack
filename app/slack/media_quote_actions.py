@@ -689,8 +689,14 @@ async def cancel_media_quote(
         await update_media_quote_session(quote_id, {"stage": cancel_stage})
         # Unlock 24h dedupe so the user can resubmit after cancel.
         from app.ray.events.media_pipeline_events import fail_media_submissions
+        from app.slack.media_workflow_actions import (
+            _post_deferred_word_transcript_if_needed,
+        )
 
         await fail_media_submissions(session)
+        await _post_deferred_word_transcript_if_needed(
+            client, session, initial_comment=_("Native transcript copy")
+        )
     await delete_media_quote_session(quote_id)
 
     channel_id = body.get("channel", {}).get("id")

@@ -133,6 +133,7 @@ from ..slack.templates.messages import (
 )
 from ..slack.utils import (
     format_callback_error,
+    format_error_detail,
     order_translations_by_target_language_order,
 )
 
@@ -640,7 +641,7 @@ async def ray_events(
                             channel=extra_data.get("slack_channel_id")
                             or auth.slack_user.channel_id
                             or auth.slack_user.user_id,
-                            text=failure_text.format(error_detail=error_msg),
+                            text=format_error_detail(failure_text, error_msg),
                             thread_ts=thread_ts,
                         )
                         if continues:

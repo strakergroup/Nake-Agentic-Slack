@@ -96,6 +96,14 @@ class TestRayEventsEndpoint:
             "Translation failed: Unknown error"
         )
 
+    def test_format_error_detail_falls_back_with_detail_intact(self):
+        from app.slack.utils import format_error_detail
+
+        assert (
+            format_error_detail("Embedding failed: { \"oops\"}", "No sound")
+            == "Embedding failed: No sound"
+        )
+
     def test_callback_error_survives_mangled_translated_template(self):
         class _ManglingTranslator:
             def translate(self, input, max_length=0):

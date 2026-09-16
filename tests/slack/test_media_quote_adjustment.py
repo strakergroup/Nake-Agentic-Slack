@@ -410,6 +410,58 @@ class TestRefreshMediaSourceEmbedCost:
 
 
 @pytest.mark.asyncio
+class TestPersistCancelDeliversDeferredWord:
+    async def test_empty_selection_posts_deferred_word(self):
+        client = AsyncMock()
+        session = _session(
+            deferred_word_file_id="docx-1",
+            deferred_word_file_name="clip.docx",
+        )
+        with (
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.get_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_media_translation_quote_slack_message",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.ray.events.media_pipeline_events.fail_media_submissions",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.media_workflow_actions.post_deferred_word_transcript",
+                new_callable=AsyncMock,
+            ) as mock_word,
+            patch(
+                "app.slack.media_workflow_actions.update_media_quote_session",
+                new_callable=AsyncMock,
+            ),
+        ):
+            persisted = await persist_ai_quote_adjustment(
+                client,
+                quote_id="quote-1",
+                quote_kind="media_translation",
+                selected_pairs=[],
+                user_id="U1",
+                context={},
+                channel_id="C1",
+                message_ts="111.222",
+            )
+
+        assert persisted is True
+        mock_word.assert_awaited_once()
+        assert mock_word.await_args.kwargs["word_file_id"] == "docx-1"
+
+
+@pytest.mark.asyncio
 class TestRefreshMediaEmbedToggles:
     async def test_refresh_drops_deselected_embed_services(self):
         view = {

@@ -181,8 +181,16 @@ async def persist_ai_quote_adjustment(
         )
         if cancelled:
             from app.ray.events.media_pipeline_events import fail_media_submissions
+            from app.slack.media_workflow_actions import (
+                _post_deferred_word_transcript_if_needed,
+            )
 
             await fail_media_submissions(updated_session or session)
+            await _post_deferred_word_transcript_if_needed(
+                client,
+                updated_session or session,
+                initial_comment=_("Native transcript copy"),
+            )
         if resolved_channel_id and resolved_message_ts and updated_session:
             await update_media_translation_quote_slack_message(
                 client,

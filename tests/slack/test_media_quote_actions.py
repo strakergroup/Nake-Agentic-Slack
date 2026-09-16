@@ -522,6 +522,64 @@ async def test_cancel_media_quote_denies_unauthorized_actor():
 
 
 @pytest.mark.asyncio
+async def test_cancel_media_quote_delivers_deferred_word():
+    from app.slack.media_quote_actions import cancel_media_quote
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {"user_id": "U1"}.get(key)
+    context.enterprise_id = None
+
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": STAGE_AWAITING_TRANSLATION_ACCEPT,
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "channel_id": "C1",
+        "deferred_word_file_id": "docx-1",
+        "deferred_word_file_name": "clip.docx",
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.slack.media_quote_actions.update_media_quote_session",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.slack.media_quote_actions.delete_media_quote_session",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.fail_media_submissions",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.post_deferred_word_transcript",
+            new=AsyncMock(),
+        ) as mock_word,
+    ):
+        await cancel_media_quote(
+            client=client,
+            body={"channel": {"id": "C1"}, "message": {"ts": "1.2"}},
+            action={"value": "q1"},
+            context=context,
+            is_translation_quote=True,
+        )
+
+    mock_word.assert_awaited_once()
+    assert mock_word.await_args.kwargs["word_file_id"] == "docx-1"
+    assert mock_word.await_args.kwargs["initial_comment"] == "Native transcript copy"
+
+
+@pytest.mark.asyncio
 async def test_post_or_auto_start_falls_back_to_quote_when_balance_fails():
     """Non-admin auto-start must not strand the submission without Accept UI."""
     from app.slack.media_quote_actions import post_or_auto_start_media_quote

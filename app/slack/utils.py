@@ -63,6 +63,23 @@ def safe_callback_error_detail(payload_error: Any) -> str:
     return error_detail[:CALLBACK_ERROR_DETAIL_MAX_LENGTH]
 
 
+def format_error_detail(template: str, error_detail: str) -> str:
+    """Fill an error template without ever raising on mangled translations.
+
+    A translated template whose placeholder was mangled (seen on UAT as
+    ``{ "error"}``) falls back to the template prefix with the detail
+    appended, so error reporting never hides the real error behind a 500.
+    """
+    try:
+        return template.format(error_detail=error_detail)
+    except (KeyError, IndexError, ValueError):
+        notify_exception(
+            Exception(f"Unformattable callback error template: {template!r}"),
+            "Callback error template mangled",
+        )
+        return f"{template.split(':')[0]}: {error_detail}"
+
+
 def format_callback_error(stage: str, payload_error: Any) -> str:
     error_detail = safe_callback_error_detail(payload_error)
     templates = {
@@ -73,17 +90,7 @@ def format_callback_error(stage: str, payload_error: Any) -> str:
     template = templates.get(stage)
     if template is None:
         raise ValueError(f"Unsupported callback error stage: {stage}")
-    try:
-        return template.format(error_detail=error_detail)
-    except (KeyError, IndexError, ValueError):
-        # Translated template mangled the placeholder (seen on UAT as
-        # KeyError hiding the real callback error behind a 500): fall back
-        # to English with the detail intact, never raise here.
-        notify_exception(
-            Exception(f"Unformattable callback error template: {template!r}"),
-            "Callback error template mangled",
-        )
-        return f"{template.split(':')[0]}: {error_detail}"
+    return format_error_detail(template, error_detail)
 
 
 def order_translations_by_target_language_order(

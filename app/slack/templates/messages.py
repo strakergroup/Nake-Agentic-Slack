@@ -23,6 +23,7 @@ from slack_sdk.models.blocks.block_elements import (
 from app.slack.select_options import (
     get_auto_translate_language_options,
 )
+from app.slack.utils import format_error_detail
 from app.translate import _
 
 from ...auth.connector import (
@@ -3297,7 +3298,10 @@ class MediaSrtReviewMessage(SlackMessage):
             blocks.append(
                 SectionBlock(
                     text=MarkdownTextObject(
-                        text=_("For *{file_label}*:").format(file_label=file_label)
+                        text=format_error_detail(
+                            _("For *{file_label}*:"),
+                            file_label,
+                        )
                     ),
                 ).to_dict()
             )
