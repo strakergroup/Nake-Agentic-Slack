@@ -185,6 +185,40 @@ class TestPopulateMediaTranslationQuoteAdjustmentModal:
         assert "French" in rendered
         assert rendered.count("initial_options") == 2
 
+    async def test_populate_includes_per_language_costs_and_ai_row(self):
+        client = AsyncMock()
+        session = _session(embed_translated=True, duration_ms=60_000)
+        with (
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.get_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.update_media_quote_session",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.safe_views_update",
+                new_callable=AsyncMock,
+            ) as mock_update,
+        ):
+            await populate_ai_quote_adjustment_modal(
+                client,
+                view_id="view-1",
+                quote_id="quote-1",
+                quote_kind="media_translation",
+                user_id="U1",
+                context={"channel_id": "C1"},
+                channel_id="C1",
+                message_ts="111.222",
+            )
+
+        modal = mock_update.await_args.args[2]
+        rendered = str(modal["blocks"])
+        assert "Embed*: USD 0.60" in rendered
+        assert "*AI Translation:* USD 12.00" in rendered
+
     async def test_populates_translated_embed_cost_for_selected_languages(self):
         client = AsyncMock()
         session = _session(embed_translated=True, duration_ms=60_000)

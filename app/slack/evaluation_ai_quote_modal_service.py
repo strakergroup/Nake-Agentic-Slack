@@ -46,6 +46,7 @@ from app.slack.media_quote_adjustment import (
 )
 from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSLATION_ACCEPT,
+    embedding_tokens_for_duration,
     get_media_quote_session,
     source_embed_tokens_for_session,
     translated_embed_tokens_for_session,
@@ -149,8 +150,9 @@ async def populate_ai_quote_adjustment_modal(
         selected_pairs = [
             str(value) for value in session.get("selected_pairs") or []
         ] or document_mt_all_pairs(quote)
+        embed_codes = media_embed_languages(session, selected_pairs)
         embed_tokens = translated_embed_tokens_for_session(
-            session, language_count=len(selected_pairs)
+            session, language_count=len(embed_codes)
         )
         await safe_views_update(
             client,
@@ -163,11 +165,15 @@ async def populate_ai_quote_adjustment_modal(
                 ai_tokens=document_mt_tokens_for_pairs(quote, selected_pairs),
                 pdf_tokens=0,
                 embed_tokens=embed_tokens,
-                embed_language_count=len(selected_pairs) if embed_tokens else 0,
+                embed_language_count=len(embed_codes) if embed_tokens else 0,
                 source_embed_tokens=source_embed_tokens_for_session(session),
                 show_embed_toggles=True,
                 embed_source=bool(session.get("embed_source")),
-                embed_languages=media_embed_languages(session, selected_pairs),
+                embed_languages=embed_codes,
+                embed_tokens_per_language=embedding_tokens_for_duration(
+                    int(session.get("duration_ms") or 0), 1
+                ),
+                show_ai_cost_row=True,
                 channel_id=resolved_channel_id or None,
                 message_ts=resolved_message_ts,
             ),
