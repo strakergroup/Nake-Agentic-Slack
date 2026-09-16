@@ -875,11 +875,21 @@ def media_translation_quote_blocks(
         source_label=(_("Source subtitle embedding") if source_tokens else None),
         source_detail=None,
         source_tokens=source_tokens or None,
-        additional_label=(_("Translated subtitle embedding") if embed_tokens else None),
-        additional_detail=(
-            translated_embed_language_detail(len(embed_codes)) if embed_tokens else None
+        additional_label=(
+            (
+                f"{_('Translated subtitle embedding')} "
+                f"({translated_embed_language_detail(len(embed_codes))}):"
+            )
+            if embed_tokens
+            else None
         ),
+        additional_detail=None,
         additional_tokens=embed_tokens or None,
+        adjust_guidance=_(
+            "Review the cost below and click *Accept Quote* "
+            "to continue, or *Adjust Request* to remove "
+            "selected languages, files, or services."
+        ),
     )
 
 
@@ -1053,6 +1063,7 @@ def evaluation_credits_quote_blocks(
     additional_label: str | None = None,
     additional_detail: str | None = None,
     additional_tokens: int | None = None,
+    adjust_guidance: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build Slack blocks for a single-service evaluate credits quote."""
     cost_label = _("Cost")
@@ -1173,7 +1184,7 @@ def evaluation_credits_quote_blocks(
         source_text = (
             f"*{source_label}:*\n{source_detail}"
             if source_detail
-            else f"*{source_label}*"
+            else f"*{source_label}:*"
         )
         blocks.append(
             {
@@ -1186,7 +1197,6 @@ def evaluation_credits_quote_blocks(
                     {
                         "type": "mrkdwn",
                         "text": (
-                            f"*{cost_label}:*\n"
                             f"{_format_evaluate_quote_cost(source_tokens, is_ibm=is_ibm)}"
                         ),
                     },
@@ -1209,7 +1219,6 @@ def evaluation_credits_quote_blocks(
                     {
                         "type": "mrkdwn",
                         "text": (
-                            f"*{cost_label}:*\n"
                             f"{_format_evaluate_quote_cost(additional_tokens, is_ibm=is_ibm)}"
                         ),
                     },
@@ -1226,20 +1235,21 @@ def evaluation_credits_quote_blocks(
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": (
-                                _(
-                                    "Review the cost below. To continue preparing "
-                                    "your human translation quote, click "
-                                    "*Accept Quote* or click *Adjust Request* to "
-                                    "remove languages and/or source files."
-                                )
-                                if ht_pretranslate_quote
-                                else _(
-                                    "Review the cost below and click *Accept Quote* "
-                                    "to continue, or *Adjust Request* to remove "
-                                    "languages and/or source files."
-                                )
-                            ),
+                        "text": (
+                            _(
+                                "Review the cost below. To continue preparing "
+                                "your human translation quote, click "
+                                "*Accept Quote* or click *Adjust Request* to "
+                                "remove languages and/or source files."
+                            )
+                            if ht_pretranslate_quote
+                            else adjust_guidance
+                            or _(
+                                "Review the cost below and click *Accept Quote* "
+                                "to continue, or *Adjust Request* to remove "
+                                "languages and/or source files."
+                            )
+                        ),
                         },
                     }
                 ]

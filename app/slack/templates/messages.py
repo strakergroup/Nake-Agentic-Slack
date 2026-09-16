@@ -3334,8 +3334,7 @@ class MediaSrtApproveContinueMessage(SlackMessage):
             )
         else:
             review_text = _(
-                "Either press *Edit and reupload* to edit and replace the transcript "
-                "(we continue automatically),\n"
+                "Either press *Edit and reupload* to edit and replace the transcript,\n"
                 "or press *Proceed* to continue."
             )
         review_section = SectionBlock(text=MarkdownTextObject(text=review_text))

@@ -807,3 +807,89 @@ def test_update_modal_cost_blocks_syncs_embed_toggle_initials():
 
     toggles = updated["blocks"][0]["elements"][0]
     assert toggles["initial_options"] == [option_translated]
+
+
+def _media_costs():
+    return [
+        {
+            "file_uuid": "file-1",
+            "file_label": "clip.mp4",
+            "value": "lang-1",
+            "label": "French",
+            "token": 300,
+        },
+    ]
+
+
+def test_ai_adjust_modal_media_intro_mentions_services():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="media_translation",
+        language_costs=_media_costs(),
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=300,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    assert "languages or services" in str(view["blocks"])
+
+
+def test_ai_adjust_modal_evaluate_intro_unchanged():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="evaluate",
+        language_costs=_media_costs(),
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=300,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    assert "file and language combinations" in str(view["blocks"])
+    assert "or services" not in str(view["blocks"])
+
+
+def test_ai_adjust_modal_per_language_embed_shows_cost():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="media_translation",
+        language_costs=_media_costs(),
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=300,
+        show_embed_toggles=True,
+        embed_source=False,
+        embed_languages=["lang-1"],
+        embed_tokens_per_language=30,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    assert "Embed*: USD 0.60" in str(view["blocks"])
+
+
+def test_ai_adjust_modal_media_shows_ai_translation_row():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="media_translation",
+        language_costs=_media_costs(),
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=300,
+        source_embed_tokens=30,
+        show_ai_cost_row=True,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    rendered = str(view["blocks"])
+    assert "*AI Translation:* USD 6.00" in rendered
+    assert "*Total cost:* USD 6.60" in rendered
+
+
+def test_ai_adjust_modal_evaluate_omits_ai_translation_row():
+    view = evaluation_ai_quote_adjust_modal(
+        quote_id="job-1",
+        quote_kind="evaluate",
+        language_costs=_media_costs(),
+        selected_pairs=["file-1:lang-1"],
+        ai_tokens=300,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    assert "AI Translation:* USD" not in str(view["blocks"])

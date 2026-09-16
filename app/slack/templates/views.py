@@ -46,6 +46,7 @@ from ..evaluation_ai_adjustment import (
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
     EMBED_SOURCE_VALUE,
 )
+from ..media_quote_adjustment import MEDIA_TRANSLATION_QUOTE_KIND
 from ..media_quotes import translated_embed_language_detail
 from ..select_options import (
     filter_auto_translate_language_options,
@@ -942,22 +943,31 @@ def evaluation_ai_quote_adjust_modal(
     show_embed_toggles: bool = False,
     embed_source: bool = False,
     embed_languages: list[str] | None = None,
+    embed_tokens_per_language: int = 0,
+    show_ai_cost_row: bool = False,
     channel_id: str | None = None,
     message_ts: str | None = None,
 ) -> dict[str, Any]:
     """Build a staged AI quote modal with per-file language selection."""
     selected = set(selected_pairs)
     tick_embed = {str(code) for code in (embed_languages or [])}
+    if quote_kind == MEDIA_TRANSLATION_QUOTE_KIND:
+        intro_text = _(
+            "Deselect any languages or services you don't need. "
+            "If all options are deselected, the quote will be cancelled."
+        )
+    else:
+        intro_text = _(
+            "Deselect any file and language combinations you do not want "
+            "translated. Selections are independent per file. Deselecting "
+            "all cancels the quote."
+        )
     blocks: list[dict[str, Any]] = [
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _(
-                    "Deselect any file and language combinations you do not want "
-                    "translated. Selections are independent per file. Deselecting "
-                    "all cancels the quote."
-                ),
+                "text": intro_text,
             },
         },
     ]
@@ -998,8 +1008,15 @@ def evaluation_ai_quote_adjust_modal(
             element["initial_options"] = [option]
         elements = [element]
         if show_embed_toggles:
+            if embed_tokens_per_language:
+                embed_text = (
+                    f"*{_('Embed')}*: "
+                    f"{_format_evaluate_quote_cost(embed_tokens_per_language)}"
+                )
+            else:
+                embed_text = f"*{_('Embed')}*"
             embed_option = {
-                "text": {"type": "mrkdwn", "text": f"*{_('Embed')}*"},
+                "text": {"type": "mrkdwn", "text": embed_text},
                 "value": option_value,
             }
             embed_element: dict[str, Any] = {
@@ -1035,6 +1052,20 @@ def evaluation_ai_quote_adjust_modal(
                 "type": "actions",
                 "block_id": "ai_quote_embed_source",
                 "elements": [source_element],
+            }
+        )
+    if show_ai_cost_row:
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "ai_quote_translation_cost_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{_('AI Translation')}:* "
+                        f"{_format_evaluate_quote_cost(ai_tokens)}"
+                    ),
+                },
             }
         )
     if pdf_tokens:
