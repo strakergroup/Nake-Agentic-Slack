@@ -2236,9 +2236,7 @@ async def test_slack_upload_transcription_posts_review_when_stage_not_yet_advanc
         patch("app.saq_jobs.tasks._safe_unlink"),
         patch(
             "app.slack.media_quotes.get_media_quote_session",
-            new=AsyncMock(
-                return_value={"quote_id": "q1", "stage": "transcribing"}
-            ),
+            new=AsyncMock(return_value={"quote_id": "q1", "stage": "transcribing"}),
         ),
     ):
         result = await slack_upload_transcription(

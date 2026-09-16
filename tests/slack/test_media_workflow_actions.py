@@ -871,9 +871,7 @@ async def test_mark_done_posts_deferred_word_with_native_copy_caption():
     mock_word.assert_awaited_once()
     assert mock_word.await_args.kwargs["word_file_id"] == "docx-1"
     assert mock_word.await_args.kwargs["word_file_name"] == "clip.docx"
-    assert (
-        mock_word.await_args.kwargs["initial_comment"] == "Native transcript copy"
-    )
+    assert mock_word.await_args.kwargs["initial_comment"] == "Native transcript copy"
 
 
 @pytest.mark.asyncio
@@ -1785,9 +1783,7 @@ async def test_approve_removes_review_buttons_after_submit():
             context=context,
         )
 
-    deleted = sorted(
-        call.kwargs["ts"] for call in client.chat_delete.await_args_list
-    )
+    deleted = sorted(call.kwargs["ts"] for call in client.chat_delete.await_args_list)
     assert deleted == ["10.1", "10.2"]
     client.chat_update.assert_not_awaited()
     cleared = {}

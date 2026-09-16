@@ -1356,7 +1356,10 @@ class TestMediaSrtReviewMessage:
     def test_translated_approve_uses_single_ai_translated_message(self):
         message = MediaSrtApproveContinueMessage("q-1", translated=True)
         dumped = json.dumps(message.blocks)
-        assert "AI translation is complete and your translation is ready to download." in dumped
+        assert (
+            "AI translation is complete and your translation is ready to download."
+            in dumped
+        )
         assert "Edit and reupload" in dumped
         assert "Proceed" in dumped
         assert "Approve & Continue" not in dumped
@@ -1373,6 +1376,7 @@ class TestMediaSrtReviewMessage:
         assert "Proceed" in dumped
         assert "Either press" in dumped
         assert "SRT" not in dumped
+
 
 class TestJobTranscribedEventMessage:
     def test_transcribed_message_uses_file_plural(self):

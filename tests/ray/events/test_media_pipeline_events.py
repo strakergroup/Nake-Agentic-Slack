@@ -1248,7 +1248,8 @@ async def test_handle_translation_complete_skips_mandatory_reupload_for_configur
     translated_lines = [
         text
         for text in texts
-        if "AI translation is complete and your translation is ready to download." in text
+        if "AI translation is complete and your translation is ready to download."
+        in text
     ]
     assert len(translated_lines) == 1
     assert "Proceed" in translated_lines[0]
@@ -1351,8 +1352,9 @@ async def test_handle_translation_complete_posts_replace_for_each_language(tmp_p
                         replace_values.append(el.get("value"))
         if "media_srt_approve_continue" in action_ids:
             assert "media_srt_replace" not in action_ids
-            assert "AI translation is complete and your translation is ready to download." in (
-                call.kwargs.get("text") or ""
+            assert (
+                "AI translation is complete and your translation is ready to download."
+                in (call.kwargs.get("text") or "")
             )
             approve_count += 1
     parsed = [json.loads(value) for value in replace_values]

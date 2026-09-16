@@ -349,9 +349,8 @@ class TestMediaTranslationQuoteBlocks:
         rendered = str(blocks)
 
         assert "Source subtitle embedding" in rendered
-        assert (
-            rendered.index("Source subtitle embedding")
-            < rendered.index("Translated subtitle embedding")
+        assert rendered.index("Source subtitle embedding") < rendered.index(
+            "Translated subtitle embedding"
         )
         assert "*Total cost:* USD 13.80" in rendered
 

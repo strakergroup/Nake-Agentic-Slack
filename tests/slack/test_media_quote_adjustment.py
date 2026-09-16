@@ -651,9 +651,7 @@ class TestPersistMediaTranslationQuoteAdjustment:
 
     async def test_persist_applies_embed_toggles_and_reprices(self):
         client = AsyncMock()
-        session = _session(
-            embed_source=True, embed_translated=True, duration_ms=60_000
-        )
+        session = _session(embed_source=True, embed_translated=True, duration_ms=60_000)
         with (
             patch(
                 "app.slack.evaluation_ai_quote_submit_service.get_media_quote_session",

@@ -100,7 +100,7 @@ class TestRayEventsEndpoint:
         from app.slack.utils import format_error_detail
 
         assert (
-            format_error_detail("Embedding failed: { \"oops\"}", "No sound")
+            format_error_detail('Embedding failed: { "oops"}', "No sound")
             == "Embedding failed: No sound"
         )
 
