@@ -338,6 +338,17 @@ class TestMediaTranslationQuoteBlocks:
         assert "USD 1.20" in rendered
         assert "*Total cost:* USD 13.20" in rendered
 
+    def test_media_translation_quote_blocks_embed_row_single_colon_no_echo(self):
+        session = self._session()
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+        rendered = str(blocks)
+
+        assert rendered.count("Translated subtitle embedding (2 languages)") == 1
+        assert "::" not in rendered
+
     def test_media_translation_quote_blocks_embed_rows_have_no_cost_prefix(self):
         session = self._session()
         session["embed_source"] = True
