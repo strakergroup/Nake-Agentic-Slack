@@ -369,7 +369,10 @@ class TestMediaTranslationQuoteBlocks:
         blocks = media_translation_quote_blocks(session)
         rendered = str(blocks)
 
-        assert "or *Adjust Request* to remove selected languages, files, or services." in rendered
+        assert (
+            "or *Adjust Request* to remove selected languages, files, or services."
+            in rendered
+        )
 
     def test_media_translation_quote_blocks_source_embed_before_translated(self):
         session = self._session()
