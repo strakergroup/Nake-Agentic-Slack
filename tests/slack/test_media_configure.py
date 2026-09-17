@@ -617,6 +617,11 @@ async def test_configure_submit_creates_quote1_with_embed_source_flag():
             return_value=True,
         ),
         patch(
+            "app.slack.handlers.media_submissions.media_configure_enabled_for_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
             "app.slack.handlers.media_submissions.check_and_record_transcription_only_submission_async",
             new_callable=AsyncMock,
             return_value=(False, submission),
@@ -695,3 +700,100 @@ class TestMediaConfigureEnabledForUser:
         with patch("app.config.config") as mock_config:
             mock_config.media_configure_admin_only = False
             assert await media_configure.media_configure_enabled_for_user(None) is True
+
+
+@pytest.mark.asyncio
+async def test_configure_action_blocks_non_admin_clicker():
+    """RAY-81819: the poster's gate must not let a non-admin click through."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.slack.handlers.media import handle_video_configure_media
+
+    client = AsyncMock()
+    action = {
+        "value": json.dumps(
+            {"channel_id": "C1", "files": _files(), "show_embed_option": True}
+        )
+    }
+    body = {"trigger_id": "T-1"}
+    context = _FakeRayContext({"user_id": "U2", "channel_id": "C1", "ray": object()})
+
+    with (
+        patch(
+            "app.slack.handlers.media.populate_ray_connection", new_callable=AsyncMock
+        ),
+        patch(
+            "app.slack.handlers.media.require_ray_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.handlers.media.open_loading_modal",
+            new_callable=AsyncMock,
+            return_value="V1",
+        ),
+        patch(
+            "app.slack.handlers.media.media_configure_enabled_for_user",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "app.slack.handlers.media.video_configure_media_modal"
+        ) as configure_modal,
+        patch(
+            "app.slack.handlers.media.safe_views_update", new_callable=AsyncMock
+        ) as views_update,
+    ):
+        await handle_video_configure_media(
+            context=context, action=action, body=body, client=client
+        )
+
+    configure_modal.assert_not_called()
+    views_update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_configure_submit_blocks_non_admin():
+    """RAY-81819: a stale or reopened Configure view must not create a v2 session."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.slack.handlers.media_submissions import handle_video_configure_media_submit
+
+    view = _view(
+        metadata={"channel_id": "C1", "files": _files(), "show_embed_option": True},
+        values={
+            "workflow_type": {
+                "video_configure_workflow_type": {
+                    "selected_option": _option("transcribe_only"),
+                }
+            },
+            "selected_file": {"file_display": {"selected_options": [_option("F1")]}},
+            "embedding": {"embedding_options": {"selected_options": []}},
+        },
+    )
+    context = _FakeRayContext(
+        {"user_id": "U2", "team_id": "T1", "channel_id": "C1", "ray": object()}
+    )
+    client = AsyncMock()
+
+    with (
+        patch(
+            "app.slack.handlers.media_submissions.require_ray_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.handlers.media_submissions.media_configure_enabled_for_user",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "app.slack.handlers.media_submissions.create_media_quote_session",
+            new_callable=AsyncMock,
+        ) as create_session,
+    ):
+        await handle_video_configure_media_submit(
+            view=view, context=context, client=client
+        )
+
+    create_session.assert_not_awaited()

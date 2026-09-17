@@ -16,6 +16,7 @@ from app.slack.media_configure import (
     VideoConfigureMediaError,
     VideoConfigureMediaSelection,
     configure_media_quote_fields,
+    media_configure_enabled_for_user,
     parse_video_configure_media_view,
 )
 from app.slack.media_duration import file_info_with_quote_duration
@@ -343,6 +344,17 @@ async def handle_video_configure_media_submit(
 ):
     """Create Quote 1 from the unified Configure media modal."""
     if not await require_ray_client(context, prompt_login=True, allow_org_billing=True):
+        return
+    if not await media_configure_enabled_for_user(context["ray"]):
+        # Guards a view reopened from a stale trigger, where the action-side
+        # check in handle_video_configure_media never ran for this user.
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_(
+                "Selecting media services is still being rolled out. "
+                "Ask a workspace admin to start this request."
+            ),
+        )
         return
 
     try:

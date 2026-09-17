@@ -15,6 +15,7 @@ from app.slack.listener_actions import (
     quote_existing_srt_embed_task,
     resolve_media_thread_ts,
 )
+from app.slack.media_configure import media_configure_enabled_for_user
 from app.slack.media_duration import file_info_with_quote_duration
 from app.slack.media_quote_actions import (
     accept_media_quote,
@@ -328,6 +329,21 @@ async def handle_video_configure_media(
                 status_modal(
                     _("Sign in required"),
                     _("Please sign in to continue."),
+                ),
+            )
+            return
+        if not await media_configure_enabled_for_user(context["ray"]):
+            # The button sits in a channel message anyone can click, so the
+            # poster-side gate is re-checked here against the actual clicker.
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Not available yet"),
+                    _(
+                        "Selecting media services is still being rolled out. "
+                        "Ask a workspace admin to start this request."
+                    ),
                 ),
             )
             return
