@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -645,3 +646,52 @@ async def test_configure_submit_creates_quote1_with_embed_source_flag():
     assert kwargs["extra"]["embed_source"] is True
     assert kwargs["extra"]["review_gate"] is True
     assert kwargs["extra"]["workflow_type"] == "transcribe_only"
+
+
+class TestMediaConfigureEnabledForUser:
+    """RAY-81819: Configure is Verify Admin/Owner only until rollout completes."""
+
+    @pytest.mark.asyncio
+    async def test_admin_gets_configure(self, monkeypatch):
+        from app.slack import media_configure
+
+        async def _may_receive_quotes(ray):
+            return True
+
+        monkeypatch.setattr(
+            media_configure, "user_may_receive_quotes", _may_receive_quotes
+        )
+        with patch("app.config.config") as mock_config:
+            mock_config.media_configure_admin_only = True
+            assert (
+                await media_configure.media_configure_enabled_for_user(object()) is True
+            )
+
+    @pytest.mark.asyncio
+    async def test_non_admin_falls_back_to_legacy(self, monkeypatch):
+        from app.slack import media_configure
+
+        async def _may_receive_quotes(ray):
+            return False
+
+        monkeypatch.setattr(
+            media_configure, "user_may_receive_quotes", _may_receive_quotes
+        )
+        with patch("app.config.config") as mock_config:
+            mock_config.media_configure_admin_only = True
+            assert (
+                await media_configure.media_configure_enabled_for_user(object())
+                is False
+            )
+
+    @pytest.mark.asyncio
+    async def test_flag_off_gives_everyone_configure(self, monkeypatch):
+        from app.slack import media_configure
+
+        async def _fail(ray):  # pragma: no cover - must not be consulted
+            raise AssertionError("admin lookup must be skipped when the flag is off")
+
+        monkeypatch.setattr(media_configure, "user_may_receive_quotes", _fail)
+        with patch("app.config.config") as mock_config:
+            mock_config.media_configure_admin_only = False
+            assert await media_configure.media_configure_enabled_for_user(None) is True

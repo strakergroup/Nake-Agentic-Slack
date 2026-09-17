@@ -4914,6 +4914,11 @@ class TestRespondToMessage:
                 "app.slack.listener_actions.is_ibm_enterprise",
                 return_value=True,
             ),
+            patch(
+                "app.slack.listener_actions.media_configure_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
         ):
             await respond_to_message(mock_client, context, message)
 
@@ -4927,6 +4932,63 @@ class TestRespondToMessage:
         payload = json.loads(configure["accessory"]["value"])
         assert payload["files"] == [{"file_id": "Fvid", "file_name": "clip.mp4"}]
         mock_client.files_info.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_video_upload_non_admin_gets_legacy_buttons(
+        self, user_id, team_id, ray_client
+    ):
+        """RAY-81819: non-admins keep the three pre-Configure media buttons."""
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {
+            "ts": "123456.789",
+            "files": [{"id": "Fvid", "name": "clip.mp4", "filetype": "mp4"}],
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+                "say": AsyncMock(),
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listener_actions.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listener_actions.files_list_simple",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.listener_actions.is_ibm_enterprise",
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listener_actions.media_configure_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as mock_gate,
+        ):
+            await respond_to_message(mock_client, context, message)
+
+        mock_gate.assert_awaited_once_with(ray_connection)
+        blocks = context.say.call_args.kwargs["blocks"]
+        action_ids = [
+            block.get("accessory", {}).get("action_id")
+            for block in blocks
+            if block.get("accessory")
+        ]
+        assert "video_configure_media" not in action_ids
+        assert "video_transcribe_only" in action_ids
+        assert "video_transcribe_translate" in action_ids
+        assert "video_embed_subtitles" in action_ids
 
     @pytest.mark.asyncio
     async def test_respond_to_message_too_many_files(

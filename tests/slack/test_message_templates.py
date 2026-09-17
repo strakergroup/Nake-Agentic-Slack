@@ -811,8 +811,7 @@ class TestVideoOptionsMessage:
         accessory = next(
             block["accessory"]
             for block in message.blocks
-            if block.get("accessory", {}).get("action_id")
-            == "video_configure_media"
+            if block.get("accessory", {}).get("action_id") == "video_configure_media"
         )
         assert accessory["text"]["text"] == "Select services"
 
@@ -834,6 +833,24 @@ class TestVideoOptionsMessage:
         )
         payload = json.loads(configure["accessory"]["value"])
         assert payload["files"] == [{"file_id": "F1", "file_name": "clip.mp4"}]
+
+    def test_non_admin_gets_legacy_three_pipeline_buttons(self):
+        message = VideoOptionsMessage(
+            channel_id="C123",
+            files=[
+                {
+                    "file_id": "F1",
+                    "file_name": "clip.mp4",
+                    "duration_ms": 1000,
+                }
+            ],
+            show_embed_option=True,
+            use_configure=False,
+        )
+        assert not _blocks_contain_action(message.blocks, "video_configure_media")
+        assert _blocks_contain_action(message.blocks, "video_transcribe_only")
+        assert _blocks_contain_action(message.blocks, "video_transcribe_translate")
+        assert _blocks_contain_action(message.blocks, "video_embed_subtitles")
 
 
 class TestNewJobMessage:

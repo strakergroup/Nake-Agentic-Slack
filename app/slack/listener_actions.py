@@ -87,6 +87,7 @@ from .bot_translation import (
 )
 from .bot_translation_limits import can_translate_bot_message
 from .evaluation_quotes import job_is_human_translation_quote
+from .media_configure import media_configure_enabled_for_user
 from .media_quotes import (
     get_media_quote_session_for_thread,
     get_media_quote_sessions_for_thread,
@@ -716,6 +717,7 @@ async def respond_to_message(
                 is_ibm_enterprise=is_ibm,
                 tokens=tokens,
                 show_embed_option=has_embeddable_video,
+                use_configure=await media_configure_enabled_for_user(context["ray"]),
             )
             await context.say(
                 text=video_msg.text,

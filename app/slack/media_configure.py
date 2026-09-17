@@ -7,10 +7,24 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.auth.connector import RayConnection, user_may_receive_quotes
 from app.media.media_workflow import MediaWorkflowType
 from app.media.word_transcript import WordTranscriptFormat
 from app.slack.media_quotes import PIPELINE_TRANSCRIBE, PIPELINE_TRANSCRIBE_TRANSLATE
 from app.translate import _
+
+
+async def media_configure_enabled_for_user(ray: RayConnection | None) -> bool:
+    """Whether this user gets the Configure media UI instead of the legacy buttons.
+
+    Gated on Verify Admin/Owner while Configure rolls out (RAY-81819); set
+    ``MEDIA_CONFIGURE_ADMIN_ONLY=false`` to open it to everyone.
+    """
+    from app.config import config
+
+    if not config.media_configure_admin_only:
+        return True
+    return await user_may_receive_quotes(ray)
 
 
 class VideoConfigureMediaError(Exception):

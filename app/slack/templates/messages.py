@@ -3485,11 +3485,64 @@ class MediaEmbeddingPartialMessage(TextMessage):
         )
 
 
-class VideoOptionsMessage(SlackMessage):
-    """Message shown when video(s) are detected, with one Configure entry.
+def _legacy_media_option_blocks(
+    action_value: str, show_embed_option: bool
+) -> list[Block]:
+    """Pre-Configure media buttons, kept for users without the Configure UI."""
+    blocks: list[Block] = [
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "*Transcribe Audio* - Transcribe spoken media content to text in the source language."
+                )
+            ),
+            accessory=ButtonElement(
+                text=PlainTextObject(text=_("Transcribe"), emoji=True),
+                action_id="video_transcribe_only",
+                value=action_value,
+                style="primary",
+            ),
+        ),
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "*Transcribe & AI Translate* - Transcribe media content and instantly translate the text into your chosen target language(s) using AI Translation."
+                )
+            ),
+            accessory=ButtonElement(
+                text=PlainTextObject(text=_("Transcribe & AI Translate"), emoji=True),
+                action_id="video_transcribe_translate",
+                value=action_value,
+                style="primary",
+            ),
+        ),
+    ]
+    if show_embed_option:
+        blocks.append(
+            SectionBlock(
+                text=MarkdownTextObject(
+                    text=_(
+                        "*Embed Subtitles* - Transcribe, translate, and automatically embed the translated text as subtitles into your media file."
+                    )
+                ),
+                accessory=ButtonElement(
+                    text=PlainTextObject(text=_("Embed Subtitles"), emoji=True),
+                    action_id="video_embed_subtitles",
+                    value=action_value,
+                    style="primary",
+                ),
+            )
+        )
+    return blocks
 
-    Configure opens a modal for workflow type, languages, and embedding.
-    Embed checkboxes in that modal are hidden for audio-only files (mp3, wav, etc.).
+
+class VideoOptionsMessage(SlackMessage):
+    """Message shown when video(s) are detected.
+
+    With ``use_configure`` (RAY-81819, Verify Admin/Owner) one Configure entry
+    opens a modal for workflow type, languages, and embedding. Without it the
+    legacy Transcribe / Transcribe & AI Translate / Embed Subtitles buttons are
+    shown instead. Embed options are hidden for audio-only files (mp3, wav).
     """
 
     def __init__(
@@ -3500,6 +3553,7 @@ class VideoOptionsMessage(SlackMessage):
         is_ibm_enterprise: bool = False,
         tokens: int | None = None,
         show_embed_option: bool = True,
+        use_configure: bool = True,
     ) -> None:
         action_value = json.dumps(
             {
@@ -3528,21 +3582,24 @@ class VideoOptionsMessage(SlackMessage):
             )
             blocks.append(token_context)
 
-        configure_button = ButtonElement(
-            text=PlainTextObject(text=_("Select services"), emoji=True),
-            action_id="video_configure_media",
-            value=action_value,
-            style="primary",
-        )
-        configure_section = SectionBlock(
-            text=MarkdownTextObject(
-                text=_(
-                    "Press the *Select services* button to select the media service(s) needed."
-                )
-            ),
-            accessory=configure_button,
-        )
-        blocks.append(configure_section)
+        if use_configure:
+            configure_button = ButtonElement(
+                text=PlainTextObject(text=_("Select services"), emoji=True),
+                action_id="video_configure_media",
+                value=action_value,
+                style="primary",
+            )
+            configure_section = SectionBlock(
+                text=MarkdownTextObject(
+                    text=_(
+                        "Press the *Select services* button to select the media service(s) needed."
+                    )
+                ),
+                accessory=configure_button,
+            )
+            blocks.append(configure_section)
+        else:
+            blocks.extend(_legacy_media_option_blocks(action_value, show_embed_option))
 
         super().__init__(
             _("Media processing options"),
