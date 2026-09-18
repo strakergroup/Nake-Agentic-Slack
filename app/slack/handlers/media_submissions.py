@@ -345,21 +345,21 @@ async def handle_video_configure_media_submit(
     """Create Quote 1 from the unified Configure media modal."""
     if not await require_ray_client(context, prompt_login=True, allow_org_billing=True):
         return
-    if not await media_configure_enabled_for_user(context["ray"]):
-        # Guards a view reopened from a stale trigger, where the action-side
-        # check in handle_video_configure_media never ran for this user.
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=_(
-                "Selecting media services is still being rolled out. "
-                "Ask a workspace admin to start this request."
-            ),
-        )
-        return
 
     try:
         assert view is not None
         assert context["ray"] is not None
+        if not await media_configure_enabled_for_user(context["ray"]):
+            # Guards a view reopened from a stale trigger, where the action-side
+            # check in handle_video_configure_media never ran for this user.
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Selecting media services is still being rolled out. "
+                    "Ask a workspace admin to start this request."
+                ),
+            )
+            return
         try:
             selection = parse_video_configure_media_view(view)
         except VideoConfigureMediaError as err:
