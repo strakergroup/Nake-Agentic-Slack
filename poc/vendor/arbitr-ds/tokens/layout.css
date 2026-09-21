@@ -1,0 +1,81 @@
+/* ============================================================
+   LAYOUT & SITE RHYTHM — synced from the arbitr website build
+   (sts-arbitr-website/site/src/app/globals.css + the section
+   components), 7 Sep. "Site wins" on conflicts; every conflict
+   with a DECIDED Canon value is logged in readme.md rather than
+   silently overwritten.
+
+   The site's own token file is a verbatim port of this system's
+   colours, type scale, radius and shadow — those agree exactly.
+   What lives here is what the SITE has and this system did not:
+   the section padding rhythm, the container utility, the type
+   utility classes, and alias names so code lifts either way.
+   ============================================================ */
+
+:root{
+/* --- aliases so markup copied from the site resolves here unchanged.
+   The site names the body family --font-sans and the shadows
+   --shadow-color-*; this system named them --font-body / --shadow-*. --- */
+--font-sans:var(--font-body);
+--shadow-color-sm:var(--shadow-sm);
+--shadow-color-md:var(--shadow-md);
+
+/* --- section padding rhythm (site, authoritative) ---
+   Every standard band is 100px top and bottom, 24px sides. Heroes are
+   taller because the fixed nav sits over them. Nothing on the site uses
+   a value outside this set. --- */
+--section-y:100px;              /* standard band */
+--section-y-hero:150px;         /* page hero, clears the nav */
+--section-y-hero-home:100px;    /* home hero top */
+--section-y-hero-home-end:88px; /* home hero bottom */
+--section-y-hero-form:200px;    /* contact hero, form sits high */
+--section-y-cta:72px;           /* full CTA band */
+--section-y-cta-compact:36px;   /* compact CTA bar */
+--section-x:var(--container-pad);
+
+/* --- display sizes the site uses that this system's scale didn't name.
+   CONFLICT with --text-hero (clamp(48px,6vw,96px)): the home h1 actually
+   ships clamp(44px,7.6vw,72px) at weight 700. Both are kept — see readme. --- */
+--text-hero-home:clamp(44px,7.6vw,72px);
+--text-section-title:clamp(26px,3.4vw,38px);  /* the standard section h2 */
+--text-cta-headline:clamp(30px,4.4vw,46px);
+--text-cta-compact:clamp(20px,2.6vw,28px);
+--text-lede:18px;                             /* the paragraph under a section h2 */
+--text-body-prose:16.5px;                     /* CTA body + blog prose */
+
+/* --- measure limits the site applies to text blocks --- */
+--measure-headline:22ch;
+--measure-headline-hero:17ch;
+--measure-lede:54ch;
+
+/* --- display weights actually in use. CONFLICT with --weight-display:600:
+   the site sets weight per ROLE, not one global display weight —
+   h1 700, section/CTA h2 400. See readme. --- */
+--weight-display-hero:700;
+--weight-display-section:400;
+
+/* --- motion (reveal.tsx) --- */
+--reveal-distance:22px;
+--reveal-duration:0.8s; /* @kind other */
+--reveal-ease:cubic-bezier(0.215,0.61,0.355,1); /* @kind other */
+}
+
+/* --- the standard page container. Use this rather than repeating
+   max-width/padding; the site's own .container-arbitr is identical. --- */
+.container-arbitr{max-width:var(--container-max);margin:0 auto;padding-left:var(--container-pad);padding-right:var(--container-pad)}
+
+/* --- semantic type-scale utilities, matching the site's globals.css
+   character for character so classes lift in either direction.
+   Size + tracking are paired: never set font-size on these by hand. --- */
+.text-hero{font-size:var(--text-hero);letter-spacing:var(--tracking-display);line-height:1.02}
+.text-page-title{font-size:var(--text-page-title);letter-spacing:var(--tracking-page-title);line-height:1.08}
+.text-section{font-size:var(--text-section);letter-spacing:var(--tracking-section);line-height:1.15}
+.text-card-title{font-size:var(--text-card-title);letter-spacing:var(--tracking-card-title)}
+.text-big-number{font-size:var(--text-big-number);letter-spacing:var(--tracking-display);line-height:1}
+.text-rule-id{font-family:var(--font-mono),monospace;font-size:var(--text-rule-id);letter-spacing:var(--tracking-rule-id);text-transform:uppercase}
+.text-micro-label{font-family:var(--font-mono),monospace;font-size:var(--text-micro-label);letter-spacing:var(--tracking-micro-label);text-transform:uppercase}
+
+/* --- reduced motion: the site collapses all animation sitewide. --- */
+@media (prefers-reduced-motion:reduce){
+*,*::before,*::after{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}
+}

@@ -1,0 +1,5 @@
+:root{
+/* Canon I4 (Provisional): 8px for containers, 4px for chips. "No other radii." */
+--radius-container:8px;
+--radius-chip:4px;
+}

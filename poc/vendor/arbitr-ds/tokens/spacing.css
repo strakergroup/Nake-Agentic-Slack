@@ -1,0 +1,8 @@
+:root{
+/* not specified by the identity spec (spacing is Out of scope in Canon 09b) —
+   intentional addition, a conventional 4px scale, sized to this system's density. */
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;
+--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;--space-16:64px;
+--container-max:1180px; /* Canon 09b --measure */
+--container-pad:24px;
+}
