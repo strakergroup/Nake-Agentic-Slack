@@ -158,7 +158,10 @@ _SPECS: list[ToolSpec] = [
 
 
 class ToolRegistry:
-    def __init__(self) -> None:
+    def __init__(self, native_document_quotes: bool = True) -> None:
+        """`native_document_quotes=False` removes the quote tool for everyone, so
+        documents go through the app's existing form (the adapter's default)."""
+        self._native_quotes = native_document_quotes
         self._specs = {spec.name: spec for spec in _SPECS}
         self._handlers: dict[str, ToolHandler] = {}
 
@@ -167,10 +170,11 @@ class ToolRegistry:
 
     def specs_for(self, can_see_quotes: bool) -> list[ToolSpec]:
         """Tools offered to the model. A person who cannot see quotes is never offered the quote tool."""
+        offer_quotes = can_see_quotes and self._native_quotes
         return [
             s
             for s in self._specs.values()
-            if can_see_quotes or s.name != "request_document_quote"
+            if offer_quotes or s.name != "request_document_quote"
         ]
 
     def as_anthropic_tools(

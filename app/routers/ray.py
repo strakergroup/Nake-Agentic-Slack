@@ -147,6 +147,11 @@ async def ray_events(
     event: RayEvent, auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)]
 ):
     """Receives and responds to an event from the RAY platform."""
+    # Arbitr agent (docs/arbitr-agent.md): lets agent task cards follow these
+    # events. No-op unless AGENT_ENABLED; never raises.
+    from app.agent.adapters.events import notify_backend_event
+
+    await notify_backend_event(event.event, event.data)
     client = None
     user_info = None
     message: Optional[SlackMessage] = None

@@ -1078,6 +1078,16 @@ async def handle_media_srt_replace_submit(
     )
 
 
+# Arbitr agent listeners (docs/arbitr-agent.md). Registered above the catch-all so
+# they are matched first, and only when AGENT_ENABLED is true.
+from app.config import config as _agent_config  # noqa: E402
+
+if _agent_config.agent_enabled:
+    from app.agent.adapters.bolt import register as register_agent
+
+    register_agent(app)
+
+
 @app.event(re.compile(r".+"))
 @slack_log_decorator
 async def catch_all_event_callbacks(body: Dict[str, Any]):

@@ -38,6 +38,7 @@ types-python-dateutil = "*"
 types-requests = "*"
 ijson = "*"
 google-cloud-translate = "*"
+anthropic = "==1.*" # Arbitr agent (docs/arbitr-agent.md)
 
 [dev-packages]
 pytest = "*"

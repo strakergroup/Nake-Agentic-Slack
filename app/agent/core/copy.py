@@ -121,6 +121,19 @@ HELP_NO_PRICE = (
     "Arbitr cannot show pricing here. Pricing in this workspace is visible to administrators. "
     "An administrator can share the quote with you."
 )
+HELP_GETTING_STARTED = (
+    "Type what you need, or attach a file and say which languages you want. "
+    "Arbitr shows its plan as it works and asks before anything is posted for others to see."
+)
+HELP_PRICING = (
+    "Paid work starts with a quote. The quote arrives as its own message with an Accept button, "
+    "and nothing is charged until someone with the right to accept it does so."
+)
+HELP_PRIVACY = (
+    "Documents and messages go to the translation service, as they do today. "
+    "The language model that runs this conversation sees your request and file names, not file contents. "
+    "Arbitr does not read channel messages to decide whether to make a suggestion."
+)
 CONNECT_NEEDED = "To do that, Arbitr needs your account. Connect it once and you will not be asked again."
 CONNECT_BUTTON = "Connect account"
 

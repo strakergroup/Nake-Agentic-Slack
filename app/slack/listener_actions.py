@@ -784,6 +784,14 @@ async def respond_to_message(
         workspace_name = await client.auth_test()
         await context.say(f"Workspace name: {workspace_name['team']}")
         return
+    # Arbitr agent (docs/arbitr-agent.md): off unless AGENT_ENABLED. On any agent
+    # failure respond_with_agent returns False and Watson answers as before.
+    from app.agent.adapters.entry import agent_enabled_for, respond_with_agent
+
+    if agent_enabled_for(context) and await respond_with_agent(
+        client, context, message, use_thread
+    ):
+        return
     response = await watson_message(message["text"], context.get("user_id"))
     context["log"].set_watson_log(
         status_code=response.status_code,

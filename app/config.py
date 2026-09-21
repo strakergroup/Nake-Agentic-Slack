@@ -91,6 +91,17 @@ class StrakerConfig(BaseSettings):
     # RAY-81819: when true, only Verify Admin/Owner users get the Configure
     # media UI. Everyone else keeps the legacy three media buttons.
     media_configure_admin_only: bool = True
+    # Arbitr agent (docs/arbitr-agent.md). Off by default: with agent_enabled false
+    # the app behaves exactly as before and no agent code runs.
+    agent_enabled: bool = False
+    agent_model: str = "claude-opus-5"
+    # When false (default) documents go through the existing Document MT form for
+    # everyone. True lets Admin/Owner request the quote in conversation; the
+    # existing quote message and Accept button still do the rest.
+    agent_native_document_quotes: bool = False
+    agent_suggestions_enabled: bool = False
+    agent_followups_enabled: bool = False
+    anthropic_api_key: SecretStr | None = None
     # RAY-81247: CRM member that owns IBM Slack HT jobs when the poster is not
     # logged in. Default is slackhtjobs@ibm.com (RAY-81247 flyway member).
     ht_service_account_member_uuid: str = "6BB48BEF-1EAD-4824-8724-5298CA10AA86"
