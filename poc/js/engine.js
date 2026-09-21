@@ -14,11 +14,12 @@ export function createPlayer(scenario, { ibm = false } = {}) {
 
   const reset = () => {
     cursor = scenario.start;
-    state = { items: [], status: 'ready', awaiting: null, done: false, note: '' };
+    state = { items: [], status: 'ready', awaiting: null, done: false, note: '', lastKind: null };
   };
 
   const apply = (step) => {
     state.note = step.note ?? '';
+    state.lastKind = step.kind;
     if (step.kind === 'plan_update') {
       const plan = state.items.find((i) => i.kind === 'plan' && i.planId === step.planId);
       if (!plan) throw new Error(`plan_update before plan: ${step.planId}`);
