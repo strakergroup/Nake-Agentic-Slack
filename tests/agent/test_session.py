@@ -117,3 +117,13 @@ def test_facts_survive_json():
     session = make_session(facts=facts)
     from app.agent.core.types import Session
     assert Session.from_json(session.to_json()).facts == facts
+
+
+@pytest.mark.asyncio
+async def test_stop_flag_round_trip(store):
+    key = "T1:D1:111.222"
+    assert await store.stop_requested(key) is False
+    await store.request_stop(key)
+    assert await store.stop_requested(key) is True
+    await store.clear_stop(key)
+    assert await store.stop_requested(key) is False

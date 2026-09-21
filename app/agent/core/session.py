@@ -53,6 +53,9 @@ class SessionStore(Protocol):
     async def session_for_quote(self, quote_id: str) -> str | None: ...
     async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None: ...
     async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None: ...
+    async def request_stop(self, key: str) -> None: ...
+    async def stop_requested(self, key: str) -> bool: ...
+    async def clear_stop(self, key: str) -> None: ...
     def lock(self, key: str) -> Any: ...
 
 
@@ -63,6 +66,7 @@ class InMemorySessionStore:
         self._quotes: dict[str, str] = {}
         self._open: dict[str, str] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        self._stops: set[str] = set()
 
     async def load(self, key: str) -> Session | None:
         raw = self._sessions.get(key)
@@ -89,6 +93,15 @@ class InMemorySessionStore:
 
     async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None:
         return self._open.get(f"{team_id}:{channel_id}:{user_id}")
+
+    async def request_stop(self, key: str) -> None:
+        self._stops.add(key)
+
+    async def stop_requested(self, key: str) -> bool:
+        return key in self._stops
+
+    async def clear_stop(self, key: str) -> None:
+        self._stops.discard(key)
 
     @asynccontextmanager
     async def lock(self, key: str) -> AsyncIterator[None]:
@@ -129,6 +142,15 @@ class RedisSessionStore:
 
     async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None:
         return _text(await self._redis.get(f"{PREFIX}open:{team_id}:{channel_id}:{user_id}"))
+
+    async def request_stop(self, key: str) -> None:
+        await self._redis.set(f"{PREFIX}stop:{key}", "1", ex=TURN_TTL)
+
+    async def stop_requested(self, key: str) -> bool:
+        return bool(await self._redis.exists(f"{PREFIX}stop:{key}"))
+
+    async def clear_stop(self, key: str) -> None:
+        await self._redis.delete(f"{PREFIX}stop:{key}")
 
     def lock(self, key: str) -> Any:
         return self._redis.lock(f"{PREFIX}lock:{key}", timeout=LOCK_TTL, blocking_timeout=30)
