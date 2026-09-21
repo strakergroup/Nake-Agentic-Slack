@@ -2,3 +2,5 @@ slack-straker-translate/
 design-system-v2/
 .env
 .DS_Store
+agent-env/
+handover/*.bundle
