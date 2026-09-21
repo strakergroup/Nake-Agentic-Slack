@@ -1,0 +1,35 @@
+# Message to Wade (draft for Nake to send)
+
+Subject: Arbitr agent for the Slack app: a branch for you to try in dev, nothing touched
+
+Hi Wade,
+
+I've been working on where the Slack app goes next, and I have something for your team to look at. Nothing of yours has been changed: no pushes to the repo, no change to the live Slack app or its listing, no credentials used. It was all done on a local copy.
+
+**What it is.** An agent layer for the Slack app, under the Arbitr name. Someone says what they need in plain words in a DM, the agent panel or an @-mention, and it uses the functions the app already has. It replaces the Watson intent matcher for free text. Shortcuts, `/straker`, every form and the Home tab stay exactly as they are.
+
+**See the experience first (5 minutes).** A clickable, scripted demo: https://claude.ai/artifact/Sxx8yDUnwVW6E8bbGVFerL
+Nine scenes, with presenter notes that explain the Slack platform constraints behind each choice.
+
+**What the code is.** One new folder, `app/agent/`, and five small edits to existing files (35 lines in the Python files), all behind `AGENT_ENABLED`, which defaults to off. With it off the app behaves exactly as today. If the agent throws, Watson answers as before.
+
+- `app/agent/core/` imports nothing from the rest of the app. It has 131 tests that run anywhere, and passes your ruff and pyright settings.
+- `app/agent/adapters/` is the only part that touches your code. It was written by reading the source.
+
+**What has and has not been proven.** The core is tested. The adapter has never run: the app needs your database and private packages, so it cannot start outside your network. I'd describe this as "tested core, reviewed wiring, ready for your dev environment", not as working. `docs/arbitr-agent-runbook.md` is a 17-step checklist with the expected result at each step; that checklist is the real test, and I expect some of my readings of the code to be wrong.
+
+**On money.** The agent cannot submit, accept, pay for or cancel anything. Quoted work still goes through your quote message and your Accept button. People who can't see quotes are handed your existing document form. A test fails if the adapter ever references your submission or acceptance functions. The one thing the agent gates itself is posting a translation publicly in a channel, which needs a click from the person who asked.
+
+**What I'd like from you.**
+1. A look at the demo, and your honest reaction.
+2. Someone to run the checklist on a dev Slack app (there is a separate `manifest.agent.yml`; please don't apply it to production, since switching to the agent view is one-way and the new scope forces a reinstall).
+3. Answers to the ten questions at the end of the run-book. They are the places I had to guess.
+
+**How to get the code.** Attached is `arbitr-agent.bundle` (`git fetch arbitr-agent.bundle arbitr-agent:arbitr-agent`), plus the same commits as patches. If you'd rather have it as a branch on the repo, tell me and I'll push `arbitr-agent` only, no other branch.
+
+**How we'll know it landed.** Your filled-in checklist. If steps 1, 2, 6, 10 and 16 pass, the approach holds and the rest is tuning.
+
+Start with `docs/arbitr-agent.md`.
+
+Thanks,
+Nake

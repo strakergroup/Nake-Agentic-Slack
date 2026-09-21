@@ -1,0 +1,595 @@
+From 5a89655bf74fcce7d4c218691e2606dd95aa2212 Mon Sep 17 00:00:00 2001
+From: Nake Sekander <nake.sekander@strakergroup.com>
+Date: Mon, 21 Sep 2026 10:50:26 +0100
+Subject: [PATCH 01/11] feat(agent): core types, fixed copy, voice rules and
+ the isolation guard
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ app/agent/__init__.py              |   0
+ app/agent/adapters/__init__.py     |   0
+ app/agent/core/__init__.py         |   0
+ app/agent/core/copy.py             | 185 +++++++++++++++++++++++++++++
+ app/agent/core/types.py            | 128 ++++++++++++++++++++
+ app/agent/core/voice.py            |  53 +++++++++
+ tests/agent/__init__.py            |   0
+ tests/agent/adapters/__init__.py   |   0
+ tests/agent/test_copy.py           |  54 +++++++++
+ tests/agent/test_core_isolation.py |  40 +++++++
+ tests/agent/test_voice.py          |  49 ++++++++
+ 11 files changed, 509 insertions(+)
+ create mode 100644 app/agent/__init__.py
+ create mode 100644 app/agent/adapters/__init__.py
+ create mode 100644 app/agent/core/__init__.py
+ create mode 100644 app/agent/core/copy.py
+ create mode 100644 app/agent/core/types.py
+ create mode 100644 app/agent/core/voice.py
+ create mode 100644 tests/agent/__init__.py
+ create mode 100644 tests/agent/adapters/__init__.py
+ create mode 100644 tests/agent/test_copy.py
+ create mode 100644 tests/agent/test_core_isolation.py
+ create mode 100644 tests/agent/test_voice.py
+
+diff --git a/app/agent/__init__.py b/app/agent/__init__.py
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/app/agent/adapters/__init__.py b/app/agent/adapters/__init__.py
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/app/agent/core/__init__.py b/app/agent/core/__init__.py
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/app/agent/core/copy.py b/app/agent/core/copy.py
+new file mode 100644
+index 00000000..f857422e
+--- /dev/null
++++ b/app/agent/core/copy.py
+@@ -0,0 +1,185 @@
++"""Every sentence the Arbitr agent can say that the model does not write.
++
++English source strings. The adapter passes them through the app's `_()` helper
++so they are localised like the rest of the app. Voice rules (Arbitr Design
++System v2): Arbitr is the named actor, never "users", no exclamation marks, no
++emoji, no em dashes. A refusal has three parts in order: what happened, why,
++what happens next. A wait for approval is the product working, never an error.
++"""
++
++from __future__ import annotations
++
++AGENT_NAME = "Arbitr"
++AGENT_TAG = "AI agent"
++
++DISCLAIMER = "AI output can be inaccurate. Human review is available on any job."
++
++# --- status and plan cards -------------------------------------------------
++CARD_LOOKUP_JOBS = "Look up your jobs"
++CARD_ACCOUNT = "Check your account"
++CARD_TRANSLATE_TEXT = "Translate the text"
++CARD_PRICE = "Price the translation"
++CARD_APPROVAL = "Your approval"
++CARD_DELIVER = "Translate and deliver here"
++CARD_POST = "Post the translation"
++CARD_FORM = "Open the form"
++CARD_DETAIL_WAITING = "Waiting on you"
++CARD_DETAIL_DECLINED = "Declined"
++CARD_DETAIL_REQUESTED = "Requested"
++CARD_DETAIL_QUOTE_READY = "Quote ready"
++CARD_DETAIL_DELIVERED = "Delivered"
++
++# --- approvals -------------------------------------------------------------
++APPROVE = "Approve"
++DECLINE = "Decline"
++POST_PUBLICLY_PROMPT = "Arbitr will post this translation in the thread, visible to everyone in the channel."
++POST_PUBLICLY_APPROVE = "Post it"
++NOT_NOW = "Not now"
++WAITING_FOR_APPROVAL = "Waiting for the person to approve. Do not claim the action has happened."
++
++APPROVED = "Approved. Arbitr is on it."
++DECLINED = "Declined. Nothing was posted and nothing was charged. Ask again whenever you need it."
++
++APPROVAL_ERRORS = {
++    "wrong_user": (
++        "That approval belongs to someone else. Arbitr only accepts a click from the person who asked. "
++        "Ask for it yourself and Arbitr will prepare a new one."
++    ),
++    "expired": (
++        "That approval has expired. Arbitr does not act on old approvals in case things have changed. "
++        "Ask again and Arbitr will prepare a new one."
++    ),
++    "unknown": (
++        "Arbitr could not find that approval. It may belong to an earlier conversation. "
++        "Ask again and Arbitr will prepare a new one."
++    ),
++    "already_used": (
++        "That approval was already used. Arbitr runs an approved action once only. "
++        "Nothing further has happened."
++    ),
++    "stopped": (
++        "That request was stopped. Arbitr does not act on approvals from a stopped request. "
++        "Ask again when you are ready."
++    ),
++}
++
++# --- failure behaviour -----------------------------------------------------
++FALLBACK_MODEL_DOWN = (
++    "Arbitr could not think that through just now. The language model did not respond. "
++    "The buttons below still work, or try again in a moment."
++)
++FALLBACK_TOOL_FAILED = (
++    "Arbitr could not complete that step. The translation service did not respond as expected. "
++    "Nothing was charged, and you can try again in a moment."
++)
++FALLBACK_TOO_MANY_STEPS = (
++    "Arbitr stopped to avoid going in circles. The request needed more steps than expected. "
++    "Tell Arbitr the one thing you need first."
++)
++FALLBACK_REFUSED = (
++    "Arbitr cannot help with that request. It is outside what this app does. "
++    "Arbitr can translate text and documents, check your jobs, and open the forms for media and review."
++)
++STOPPED = "Stopped. Anything not yet approved has been cancelled. Nothing further will happen."
++
++QUICK_ACTION_JOBS = "My jobs"
++QUICK_ACTION_NEW = "New translation"
++QUICK_ACTION_HELP = "Help"
++
++# --- hand-offs to the existing forms ----------------------------------------
++HANDOFF_INTRO = {
++    "document_translation": "Document translation runs through the document form. Open it with your file attached.",
++    "media": "Subtitles and transcripts run through the media form. Open it with your file attached.",
++    "quality_evaluation": "Quality evaluation runs through its own form. Open it with your file attached.",
++    "human_translation": "Human translation runs through its own form. Open it with your file attached.",
++    "new_job": "A new translation job starts from the job form.",
++    "channel_settings": "Channel translation settings are changed in the settings form.",
++}
++HANDOFF_BUTTON = {
++    "document_translation": "Open document form",
++    "media": "Open media form",
++    "quality_evaluation": "Open evaluation form",
++    "human_translation": "Open human translation form",
++    "new_job": "Open job form",
++    "channel_settings": "Open settings",
++}
++
++# --- help and onboarding ----------------------------------------------------
++HELP_GENERAL = (
++    "Arbitr translates text and documents in Slack, checks on your translation jobs, "
++    "and opens the forms for subtitles, quality evaluation and human review. "
++    "Say what you need in your own words."
++)
++HELP_IBM_GENERIC = (
++    "Arbitr translates text and documents in Slack, checks on your translation jobs, "
++    "and opens the forms for subtitles, quality evaluation and human review. "
++    "Your workspace is already set up. Say what you need in your own words."
++)
++HELP_NO_PRICE = (
++    "Arbitr cannot show pricing here. Pricing in this workspace is visible to administrators. "
++    "An administrator can share the quote with you."
++)
++CONNECT_NEEDED = "To do that, Arbitr needs your account. Connect it once and you will not be asked again."
++CONNECT_BUTTON = "Connect account"
++
++# Strings that may be shown in IBM workspaces. They must never mention account
++# connection, balances or buying anything (tests/agent/test_copy.py).
++IBM_SAFE = [HELP_IBM_GENERIC, HELP_NO_PRICE, FALLBACK_MODEL_DOWN, FALLBACK_TOOL_FAILED, STOPPED, DECLINED]
++
++# --- suggestions (no model involved) -----------------------------------------
++SUGGESTION_PRIVATE_LABEL = "Only visible to you"
++SUGGESTION_LANGUAGE_GAP = "Most people in this channel work in {language}. Want this posted in {language} as well?"
++SUGGESTION_ACT = "Post in {language}"
++SUGGESTION_NOT_NOW = "Not now"
++SUGGESTION_NEVER = "Don't suggest this again"
++SUGGESTION_DISMISSED = "No problem. Nothing was posted."
++SUGGESTION_MUTED = (
++    "Done. Arbitr will not suggest translations to you in this channel. "
++    "You can change this in the Arbitr Home tab."
++)
++SUGGESTION_ATTRIBUTION = "Translated from {source} by Arbitr (AI). Posted at {name}'s request."
++SUGGESTIONS_ENABLED = "Suggestions are now on in this channel. Anyone here can turn them off."
++ADMIN_ONLY_SUGGESTIONS = (
++    "In this workspace only an admin can turn on channel suggestions. "
++    "This keeps administrators in control of where Arbitr speaks first. "
++    "Arbitr can send the request to your admins."
++)
++ASK_AN_ADMIN = "Ask an admin"
++
++# --- follow-ups and digest ----------------------------------------------------
++FOLLOWUP_QUOTE_WAITING = "The quote for {name} has been waiting since {day}. Arbitr will not remind you again."
++FOLLOWUP_DELIVERED = "{name} is ready. Need it in another language?"
++DIGEST_TITLE = "Your translation jobs"
++DIGEST_DELIVERED = "{count} delivered"
++DIGEST_WAITING = "{count} waiting on you"
++DIGEST_IN_PROGRESS = "{count} in progress"
++DIGEST_TEAM = "Your team translated {words} words this week."
++DIGEST_ON = "Digest is on. Arbitr will send it by direct message."
++DIGEST_OFF = "Digest is off."
++
++# --- Home tab additions --------------------------------------------------------
++HOME_DIGEST_TITLE = "Digest"
++HOME_DIGEST_HELPER = "A summary of your jobs, sent by direct message."
++HOME_DIGEST_OPTIONS = ["Off", "Daily", "Weekly"]
++HOME_MUTED_TITLE = "Muted suggestions"
++HOME_UNMUTE = "Unmute"
++HOME_CHANNELS_TITLE = "Channel suggestions"
++HOME_TURN_OFF = "Turn off"
++
++
++def _flatten(value) -> list[str]:
++    if isinstance(value, str):
++        return [value]
++    if isinstance(value, dict):
++        return [s for v in value.values() for s in _flatten(v)]
++    if isinstance(value, (list, tuple)):
++        return [s for v in value for s in _flatten(v)]
++    return []
++
++
++ALL: list[str] = [
++    s
++    for name, value in list(globals().items())
++    if name.isupper() and name not in {"ALL", "IBM_SAFE"}
++    for s in _flatten(value)
++]
+diff --git a/app/agent/core/types.py b/app/agent/core/types.py
+new file mode 100644
+index 00000000..52439626
+--- /dev/null
++++ b/app/agent/core/types.py
+@@ -0,0 +1,128 @@
++"""Shared data shapes for the Arbitr agent core.
++
++Nothing in this package imports the rest of the app (see
++tests/agent/test_core_isolation.py). The adapters translate between these
++shapes and the app's own objects.
++"""
++
++from __future__ import annotations
++
++from dataclasses import asdict, dataclass, field
++from typing import Any, Awaitable, Callable, Literal
++
++Surface = Literal["dm", "mention", "panel"]
++SessionStatus = Literal["processing", "active", "suspended", "closed"]
++ToolKind = Literal["lookup", "gated"]
++Outcome = Literal["success", "partial", "failure"]
++
++
++@dataclass(frozen=True)
++class AgentFacts:
++    """What the app already knows about the person before the model sees anything."""
++
++    user_id: str
++    team_id: str
++    channel_id: str
++    enterprise_id: str | None = None
++    thread_ts: str | None = None
++    locale: str = "en-US"
++    is_connected: bool = False
++    can_see_quotes: bool = False
++    is_ibm: bool = False
++    is_workspace_admin: bool = False
++    surface: Surface = "dm"
++    display_name: str | None = None
++
++
++@dataclass(frozen=True)
++class ToolSpec:
++    name: str
++    description: str
++    input_schema: dict[str, Any]
++    kind: ToolKind
++
++
++@dataclass(frozen=True)
++class ToolCall:
++    id: str
++    name: str
++    input: dict[str, Any]
++
++
++@dataclass(frozen=True)
++class ToolOutcome:
++    """What a tool hands back to the model. `content` is plain text or JSON text.
++
++    `card` optionally names the task card to show for this work, and `blocks`
++    lets a tool ask for Slack blocks (for example a hand-off button) to be posted.
++    """
++
++    content: str
++    is_error: bool = False
++    card: str | None = None
++    card_detail: str | None = None
++    blocks: list[dict[str, Any]] | None = None
++    waits_for_backend: bool = False
++
++
++@dataclass(frozen=True)
++class PendingApproval:
++    id: str
++    session_key: str
++    tool: str
++    tool_input: dict[str, Any]
++    requested_by: str
++    summary: str
++    show_amount: bool
++    amount_text: str | None
++    created_at: float
++    expires_at: float
++    tool_use_id: str | None = None
++
++
++@dataclass
++class Session:
++    key: str
++    facts: AgentFacts
++    messages: list[dict[str, Any]] = field(default_factory=list)
++    status: SessionStatus = "active"
++    title: str | None = None
++    pending: dict[str, PendingApproval] = field(default_factory=dict)
++    used_approvals: list[str] = field(default_factory=list)
++    plan: list[dict[str, Any]] = field(default_factory=list)
++    stopped: bool = False
++    plain_messages_only: bool = False
++
++    def to_json(self) -> dict[str, Any]:
++        return asdict(self)
++
++    @classmethod
++    def from_json(cls, data: dict[str, Any]) -> "Session":
++        data = dict(data)
++        data["facts"] = AgentFacts(**data["facts"])
++        data["pending"] = {k: PendingApproval(**v) for k, v in data.get("pending", {}).items()}
++        return cls(**data)
++
++
++def session_key(facts: AgentFacts) -> str:
++    return f"{facts.team_id}:{facts.channel_id}:{facts.thread_ts or 'root'}"
++
++
++@dataclass(frozen=True)
++class TurnRecord:
++    """One audit row per agent turn: the fields Slack's governance guide tells admins to expect."""
++
++    session_key: str
++    user_id: str
++    team_id: str
++    model: str
++    tools_called: list[str]
++    outcome: Outcome
++    error_type: str | None
++    input_tokens: int
++    output_tokens: int
++    total_latency_ms: int
++    voice_violations: list[str] = field(default_factory=list)
++
++
++ToolHandler = Callable[[AgentFacts, dict[str, Any]], Awaitable[ToolOutcome]]
+diff --git a/app/agent/core/voice.py b/app/agent/core/voice.py
+new file mode 100644
+index 00000000..18b11819
+--- /dev/null
++++ b/app/agent/core/voice.py
+@@ -0,0 +1,53 @@
++"""Arbitr voice rules that can be checked mechanically.
++
++Python port of poc/js/copy-rules.js so the simulation and the agent are held to
++the same rules. Used on every fixed string at test time and on every
++model-written reply at run time (where it only records, never blocks).
++"""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass
++
++# Emoji and pictographs. Python's `re` has no \p{Extended_Pictographic}; these
++# ranges cover the emoji blocks plus variation selector 16 and keycap marks.
++_EMOJI = re.compile(
++    "["
++    "\U0001f000-\U0001faff"  # mahjong .. symbols and pictographs extended-A
++    "\U00002600-\U000027bf"  # misc symbols, dingbats
++    "\U00002b00-\U00002bff"  # arrows and stars used as emoji
++    "\U0000fe0f\U000020e3"
++    "]"
++)
++
++_RULES: list[tuple[str, re.Pattern[str]]] = [
++    ("no-dash", re.compile("[–—]")),
++    ("no-emoji", _EMOJI),
++    ("capitalise-arbitr", re.compile(r"(?<![/\w.-])arbitr(?![\w-])")),
++    ("no-exclamation", re.compile("!")),
++    ("no-users", re.compile(r"\busers?\b", re.I)),
++    (
++        "retired-word",
++        re.compile(
++            r"\b(seamless(ly)?|empower(s|ed|ing)?|unlock(s|ed|ing)?|effortless(ly)?"
++            r"|bottleneck|raw potential|revolutionary|next-gen)\b",
++            re.I,
++        ),
++    ),
++    ("off-limits-claim", re.compile(r"\b(trust scor(e|ing)|consensus voting|glass box)\b", re.I)),
++    (
++        "retired-name",
++        re.compile(r"\b(Straker\.AI|NotVerify|LanguageCloud|RAY Translate|Connect to Verify)\b"),
++    ),
++]
++
++
++@dataclass(frozen=True)
++class Violation:
++    rule: str
++    text: str
++
++
++def check_copy(text: str) -> list[Violation]:
++    return [Violation(rule, text) for rule, pattern in _RULES if pattern.search(text)]
+diff --git a/tests/agent/__init__.py b/tests/agent/__init__.py
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/tests/agent/adapters/__init__.py b/tests/agent/adapters/__init__.py
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/tests/agent/test_copy.py b/tests/agent/test_copy.py
+new file mode 100644
+index 00000000..cacfa523
+--- /dev/null
++++ b/tests/agent/test_copy.py
+@@ -0,0 +1,54 @@
++import re
++
++from app.agent.core import copy
++from app.agent.core.voice import check_copy
++
++
++def test_there_is_a_meaningful_amount_of_copy():
++    assert len(copy.ALL) > 60
++
++
++def test_every_fixed_string_passes_the_voice_rules():
++    bad = [f"{v.rule}: {text}" for text in copy.ALL for v in check_copy(text)]
++    assert bad == []
++
++
++def test_disclaimer_matches_the_poc():
++    assert copy.DISCLAIMER == "AI output can be inaccurate. Human review is available on any job."
++
++
++def _sentences(text):
++    return [s for s in re.split(r"(?<=[.?])\s+", text.strip()) if s]
++
++
++def test_refusals_have_three_parts():
++    refusals = [
++        *copy.APPROVAL_ERRORS.values(),
++        copy.FALLBACK_MODEL_DOWN,
++        copy.FALLBACK_TOOL_FAILED,
++        copy.FALLBACK_TOO_MANY_STEPS,
++        copy.FALLBACK_REFUSED,
++        copy.ADMIN_ONLY_SUGGESTIONS,
++        copy.HELP_NO_PRICE,
++    ]
++    for text in refusals:
++        assert len(_sentences(text)) == 3, text
++
++
++def test_refusals_never_apologise():
++    for text in copy.ALL:
++        assert not re.search(r"\b(sorry|apolog|unfortunately)\b", text, re.I), text
++
++
++def test_ibm_safe_strings_never_mention_connection_or_money():
++    for text in copy.IBM_SAFE:
++        assert not re.search(r"\b(connect|top up|purchase|balance|buy)\b", text, re.I), text
++
++
++def test_every_form_has_an_intro_and_a_button():
++    assert set(copy.HANDOFF_INTRO) == set(copy.HANDOFF_BUTTON)
++    assert "document_translation" in copy.HANDOFF_INTRO
++
++
++def test_every_approval_error_reason_has_copy():
++    assert set(copy.APPROVAL_ERRORS) == {"wrong_user", "expired", "unknown", "already_used", "stopped"}
+diff --git a/tests/agent/test_core_isolation.py b/tests/agent/test_core_isolation.py
+new file mode 100644
+index 00000000..02413b39
+--- /dev/null
++++ b/tests/agent/test_core_isolation.py
+@@ -0,0 +1,40 @@
++"""The agent core must install and test on a laptop with none of the app's
++infrastructure, so it may not import the rest of the app or its private packages."""
++
++import ast
++import pathlib
++
++CORE = pathlib.Path(__file__).parents[2] / "app" / "agent" / "core"
++ALLOWED_PREFIX = "app.agent.core"
++PRIVATE = ("straker_utils", "straker_auth", "ray_sdk", "ray_logger", "buglog", "ibm_watson")
++
++
++def _imports(path: pathlib.Path):
++    tree = ast.parse(path.read_text())
++    for node in ast.walk(tree):
++        if isinstance(node, ast.Import):
++            yield from (alias.name for alias in node.names)
++        elif isinstance(node, ast.ImportFrom):
++            if node.level:  # relative import: stays inside the core
++                continue
++            yield node.module or ""
++
++
++def test_core_never_imports_the_rest_of_the_app():
++    offenders = [
++        f"{py.name}: {name}"
++        for py in CORE.rglob("*.py")
++        for name in _imports(py)
++        if name == "app" or (name.startswith("app.") and not name.startswith(ALLOWED_PREFIX))
++    ]
++    assert offenders == []
++
++
++def test_core_has_no_private_straker_packages():
++    offenders = [
++        f"{py.name}: {name}"
++        for py in CORE.rglob("*.py")
++        for name in _imports(py)
++        if name.split(".")[0] in PRIVATE
++    ]
++    assert offenders == []
+diff --git a/tests/agent/test_voice.py b/tests/agent/test_voice.py
+new file mode 100644
+index 00000000..8bddeb9c
+--- /dev/null
++++ b/tests/agent/test_voice.py
+@@ -0,0 +1,49 @@
++from app.agent.core.voice import check_copy
++
++
++def rules(text):
++    return [v.rule for v in check_copy(text)]
++
++
++def test_clean_copy_passes():
++    assert rules("Arbitr has started the French translation.") == []
++
++
++def test_flags_em_and_en_dashes():
++    assert rules("Ready — two files") == ["no-dash"]
++    assert rules("Ready – two files") == ["no-dash"]
++
++
++def test_flags_emoji():
++    assert rules("Done \U0001f44d") == ["no-emoji"]
++    assert rules("Done ✅") == ["no-emoji"]
++
++
++def test_flags_lowercase_product_name_but_not_commands_or_paths():
++    assert rules("ask arbitr to translate") == ["capitalise-arbitr"]
++    assert rules("Type /arbitr to start") == []
++    assert rules("the arbitr-agent branch") == []
++
++
++def test_flags_exclamation_marks():
++    assert rules("Your file is ready!") == ["no-exclamation"]
++
++
++def test_flags_the_word_users():
++    assert rules("Users can mute this") == ["no-users"]
++
++
++def test_flags_retired_and_off_limits_words():
++    assert rules("A seamless experience") == ["retired-word"]
++    assert rules("Your trust score is 92") == ["off-limits-claim"]
++    assert rules("Explained by Glass Box") == ["off-limits-claim"]
++
++
++def test_flags_retired_names():
++    assert rules("Connect to Verify") == ["retired-name"]
++    assert rules("Open LanguageCloud") == ["retired-name"]
++
++
++def test_japanese_and_accented_text_is_not_mistaken_for_emoji():
++    assert rules("ローンチは10月14日に変更になりました。") == []
++    assert rules("Überprüfung abgeschlossen. Tradução concluída.") == []
+-- 
+2.50.1 (Apple Git-155)
+

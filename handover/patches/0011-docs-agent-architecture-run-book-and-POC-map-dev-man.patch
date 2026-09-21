@@ -1,0 +1,490 @@
+From d91d5111ff7535034aaf2ef913579dd274768cb6 Mon Sep 17 00:00:00 2001
+From: Nake Sekander <nake.sekander@strakergroup.com>
+Date: Mon, 21 Sep 2026 11:19:03 +0100
+Subject: [PATCH 11/11] docs(agent): architecture, run-book and POC map; dev
+ manifest; /arbitr accepted
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ app/slack/listeners.py              |   2 +-
+ docs/arbitr-agent-poc-map.md        |  30 +++++
+ docs/arbitr-agent-runbook.md        |  71 +++++++++++
+ docs/arbitr-agent.md                | 189 ++++++++++++++++++++++++++++
+ manifest.agent.yml                  | 122 ++++++++++++++++++
+ tests/agent/test_adapters_static.py |  10 ++
+ 6 files changed, 423 insertions(+), 1 deletion(-)
+ create mode 100644 docs/arbitr-agent-poc-map.md
+ create mode 100644 docs/arbitr-agent-runbook.md
+ create mode 100644 docs/arbitr-agent.md
+ create mode 100644 manifest.agent.yml
+
+diff --git a/app/slack/listeners.py b/app/slack/listeners.py
+index dde924b5..64e88068 100644
+--- a/app/slack/listeners.py
++++ b/app/slack/listeners.py
+@@ -286,7 +286,7 @@ async def job_search_action(
+     await jobs.handle_job_search_action(context=context, client=client, body=body)
+ 
+ 
+-@app.command(re.compile(r"\/\w*(ray|straker|lc)\w*"))
++@app.command(re.compile(r"\/\w*(ray|straker|lc|arbitr)\w*"))
+ @slack_log_decorator
+ async def ray_command(
+     ack: AsyncAck,
+diff --git a/docs/arbitr-agent-poc-map.md b/docs/arbitr-agent-poc-map.md
+new file mode 100644
+index 00000000..754e5c4f
+--- /dev/null
++++ b/docs/arbitr-agent-poc-map.md
+@@ -0,0 +1,30 @@
++# From the POC to the code
++
++POC: https://claude.ai/artifact/Sxx8yDUnwVW6E8bbGVFerL (scripted; nothing in it is connected to Slack).
++"Built" means code exists with tests. "Yours" means existing behaviour, reused. "Not built" is shown
++in the POC as the target experience and is listed in arbitr-agent.md under "What is not wired".
++
++| POC scene | Status | Where |
++|---|---|---|
++| **1. Document request** | | |
++| Suggested prompts at session start | Not built | Needs `app_home_opened`, which already has a listener here. |
++| Agent asks which slide instead of guessing | Built | `core/prompt.py` privacy rule; the model never receives file contents (`runner._user_content`). |
++| "Actually, add French too" | Built | Multi-turn sessions, `core/session.py`. |
++| Quote plan, then quote | Built behind a flag | `request_document_quote` in `adapters/straker_tools.py`, `AGENT_NATIVE_DOCUMENT_QUOTES`. The quote message itself is yours. Default: a button to your form. |
++| Typed "yes, go ahead" is not accepted | Built | `core/prompt.py`; evals `adversarial-approved-yesterday`, `adversarial-skip-approval`. |
++| Accept button, validation, submission | Yours | `app/slack/document_mt_quote_actions.py`. The agent never calls it. |
++| Delivery plan, second message | Built | `runner.handle_backend_event`, fed by `adapters/events.py`. |
++| Files delivered in the conversation | Yours | `slack_upload_mt_result`. |
++| Feedback buttons | Not built | |
++| **2. The next day** | Partly built | Sessions persist for seven days and wake on backend events. `verify:human_verification:completed` is not mapped in `adapters/events.py` yet. |
++| **3. Jobs** | Built | `get_job`, `list_jobs` over `RayService`. No task card for simple look-ups. |
++| Approve a waiting job quote from the conversation | Yours | Your `JobQuotedMessage` buttons. The agent only tells the person it is waiting. |
++| **4. In a channel** | Built | `app_mention` reaches the seam with `use_thread=True`. Only the asker can approve: `core/approvals.py`. |
++| **5. Suggestion by DM** | Rules built, trigger not | `core/suggestions.py`, `slack_ui.suggestion_blocks`. |
++| **6. Hand-off to a form** | Built | `offer_form` posts a button carrying your existing `action_id` and payload shape (`slack_ui.FORM_ACTION_IDS`). Your openers, and your trigger-safety pattern, do the rest. `new_job` has no button opener, so it gets text only. |
++| **7. When things go wrong** | | |
++| Expired quote | Yours | The message shown is your existing copy. |
++| Stop | Built | `bolt.agent_session_stopped`, `runner.handle_stop`. |
++| Model unavailable | Built | `runner` fallback plus `bolt.agent_quick_*`. |
++| **8. IBM workspace** | Built, reusing yours | No connect or money talk: `core/prompt.py` plus the reply guard in `runner._guard`. People who cannot see quotes get your form. Admin-only suggestions: `suggestions.can_enable`. |
++| **9. Home tab** | Blocks built, not wired | `slack_ui.home_blocks`. "Waiting on you", default languages: planned. Spend policy: a concept only. |
+diff --git a/docs/arbitr-agent-runbook.md b/docs/arbitr-agent-runbook.md
+new file mode 100644
+index 00000000..7134d65b
+--- /dev/null
++++ b/docs/arbitr-agent-runbook.md
+@@ -0,0 +1,71 @@
++# Arbitr agent: switching it on in dev
++
++Nothing here has been run. It was written outside Straker's network, where this app
++cannot start. This run-book is the test. Please record what happens at each step; every
++"expected" below is a claim from reading the code, and some will be wrong.
++
++## Before you start
++
++1. Check out branch `arbitr-agent`.
++2. Regenerate the lock file against the private index: `pipenv lock && pipenv install --dev`.
++   `anthropic` 1.x uses `httpx2`, a separate package, so it does not collide with the app's `httpx<1.0` pin.
++3. Core tests, which need nothing: `pipenv run pytest tests/agent --noconftest -q --ignore=tests/agent/adapters`
++   Expected: 131 passed. (`--noconftest` because `tests/conftest.py` connects to MySQL at import.)
++4. Your full suite: `pipenv run pytest`. Expected: no new failures against `master`.
++5. Create a **separate dev Slack app** from `manifest.agent.yml` (replace `<YOUR_DOMAIN>`). Do not
++   change the production app: switching a manifest to `agent_view` cannot be reversed and, for a
++   distributed app, triggers Marketplace review; `assistant:write` forces workspaces to reinstall.
++   If Slack rejects the manifest, check the field names `agent_view` and `agent_description` first.
++6. In `.env`: `AGENT_ENABLED=false` for now, `ANTHROPIC_API_KEY=<key>`.
++
++## Checklist
++
++| # | Do this | Expected | Result |
++|---|---|---|---|
++| 1 | `AGENT_ENABLED=false`. DM the bot "where's my job?" | Watson answers exactly as today. No agent log lines. | |
++| 2 | `AGENT_ENABLED=true`, restart. Same DM. | A reply in the first person listing your jobs from RAY. "Working" then "Ready" status in the agent panel. No task card. | |
++| 3 | DM "status of TJ<a real job>" | Correct status, languages, target date. | |
++| 4 | DM in Japanese or German: "what can you do?" | Reply in that language. | |
++| 5 | DM "Put this in Japanese: The launch moves to 14 October." | A task card "Translate the text", then the translation arrives through the existing `slack:direct:mt:result` path. Usage billed once as `direct_machine_translation`. | |
++| 6 | DM a .docx with "translate this into French" | A button "Open document form". Clicking it opens your existing Document MT modal with the file selected. | |
++| 7 | DM an .mp4 with "add Japanese subtitles" | A button "Open media form" that opens the existing media modal. | |
++| 8 | In a channel thread: "@bot post this in Japanese" as user A | A reply with **Post it** and **Decline**. Session status "Waiting on you". Nothing posted yet. | |
++| 9 | User B clicks **Post it** | An ephemeral refusal to B. Nothing posted. | |
++| 10 | User A clicks **Post it**, then clicks it again | One translation in the thread. The second click gets "already used". One billing record. | |
++| 11 | Start a long request, press Slack's Stop button | "Stopped." and status back to Ready. | |
++| 12 | Send the same Slack event twice (replay the request body) | One reply, one model call. | |
++| 13 | Unset `ANTHROPIC_API_KEY` or block egress, DM anything | With no key the agent is off and Watson answers. With egress blocked: fixed copy plus three buttons; "My jobs" shows your existing job list. | |
++| 14 | In an IBM-flagged workspace, DM "how do I connect my account and top up?" | No mention of connecting, balances or top-ups. | |
++| 15 | As a non-admin with `QUOTE_ADMIN_ONLY=true`, DM "how much will this cost?" | No amount in the reply. | |
++| 16 | Trigger any `/ray/events` event with the flag on and off | Your existing handling is unchanged in both cases. | |
++| 17 | (Optional, after review) `AGENT_NATIVE_DOCUMENT_QUOTES=true`, as an Admin DM a file with "translate into German, it's in English" | Your existing quote message with Accept Quote appears. The agent states no price. | |
++
++## Please confirm or correct
++
++These are judgement calls made without being able to ask you.
++
++1. **`usage_type`.** The agent bills inline translation as `direct_machine_translation`. A distinct
++   `agent_translate` value would make usage reports clearer, if LanguageCloud accepts new values.
++2. **IBM detection.** `facts.py` uses `is_ibm_customer_enterprise`, so Straker's own IBM-like sandbox
++   is not treated as IBM for the no-connect rule. Should it be `is_ibm_enterprise`?
++3. **Job filters.** `list_jobs` maps "open" to `IN_PROGRESS`, "waiting on me" to `PENDING_QUOTES`,
++   "delivered" to `COMPLETED`. Is `PENDING_QUOTES` the right status for quotes awaiting acceptance?
++4. **Threads.** Does `get_mt_translation(..., thread_ts=...)` with no `response_url` post the result
++   publicly in that thread? The public-post tool assumes it does.
++5. **Event correlation.** `verify:slack:document:translated` does not appear to carry a `quote_id`. The
++   bridge falls back to "most recent open agent session for this person in this channel". A `quote_id`
++   on that event would make it exact.
++6. **Slack payload details.** The streaming calls use `ts` for the message timestamp and
++   `{"type": "task_update", "task": {...}}` chunks with status `complete`, following the published
++   examples. Slack's prose says `completed` in places. The locked slack-sdk predates these methods.
++7. **Process load.** The agent holds an in-process task for the length of a model call (seconds), in the
++   web process that also runs the SAQ worker. `app/routers/slack.py` already warns above 5 s.
++8. **Conversion rule** between the dollars shown in quotes and Credits, if Credits are to be shown.
++9. **Does anything downstream match on** `"source": "Straker Translate for Slack"`? (For the rebrand.)
++10. **Scope approval.** `app/slack/app.py` notes that new scopes are held until approved for
++    production. `assistant:write` is the only new one.
++
++## If something breaks
++
++Set `AGENT_ENABLED=false` and restart. Every edit to existing files is behind that flag, and an
++exception inside the agent already falls through to Watson.
+diff --git a/docs/arbitr-agent.md b/docs/arbitr-agent.md
+new file mode 100644
+index 00000000..112d63c0
+--- /dev/null
++++ b/docs/arbitr-agent.md
+@@ -0,0 +1,189 @@
++# Arbitr agent
++
++An agent layer for this app: a person states a goal in plain language in a DM, the
++Slack agent panel, or an @-mention, and the agent uses the app's existing functions
++to get it done. It replaces the IBM Watson Assistant intent matcher for free-text
++messages. Shortcuts, the slash command, forms and the Home tab are unchanged.
++
++**Status: tested core, reviewed wiring, not yet run.** The core has 131 automated
++tests that run anywhere. The adapter was written from a reading of this codebase and
++has never executed, because the app cannot start outside Straker's network. Start
++with [the run-book](arbitr-agent-runbook.md).
++
++The experience this code is meant to produce is shown, step by step, in the front-end
++POC: https://claude.ai/artifact/Sxx8yDUnwVW6E8bbGVFerL . [arbitr-agent-poc-map.md](arbitr-agent-poc-map.md)
++maps each scene to the code behind it.
++
++## One switch
++
++`AGENT_ENABLED` (default `false`). With it off the app behaves exactly as before: the
++seam falls straight through to Watson, no listeners are registered, the event hook
++returns immediately. It also needs `ANTHROPIC_API_KEY`; without a key the agent stays off.
++
++| Variable | Default | Effect |
++|---|---|---|
++| `AGENT_ENABLED` | `false` | Master switch. |
++| `ANTHROPIC_API_KEY` | unset | Required for the agent to switch on. Read from the environment, not from `integration_keys`. |
++| `AGENT_MODEL` | `claude-opus-5` | The model behind the vendor-neutral port. |
++| `AGENT_NATIVE_DOCUMENT_QUOTES` | `false` | See "Documents" below. |
++| `AGENT_SUGGESTIONS_ENABLED` | `false` | Reserved. The suggestion rules exist and are tested; the channel trigger is not wired. |
++| `AGENT_FOLLOWUPS_ENABLED` | `false` | Reserved. See "What is not wired". |
++
++## Two layers
++
++```
++app/agent/core/       all agent logic; imports nothing from the rest of the app
++app/agent/adapters/   the only code that touches the app, Bolt and Slack
++```
++
++`tests/agent/test_core_isolation.py` fails if the core ever imports `app.*` (outside
++itself) or a private Straker package. That rule is what lets the core be tested on a
++laptop, and it keeps your review small: the adapters and five short edits.
++
++**Core**
++
++| File | What it does |
++|---|---|
++| `types.py` | `AgentFacts`, `Session`, `PendingApproval`, `ToolSpec`, `ToolOutcome`, `TurnRecord`. |
++| `runner.py` | The only orchestrator: `handle_message`, `handle_approval`, `handle_stop`, `handle_backend_event`. |
++| `llm.py` | `LlmPort` (vendor-neutral) and `ClaudeLlm`. A manual tool loop, because a turn can pause for hours on a click and must resume from Redis in another process. |
++| `prompt.py` | System prompt. Frozen rules first, per-request facts last, so the prompt cache can serve the long part. |
++| `tools.py` | The nine tools and their strict schemas. |
++| `approvals.py` | The approval gate. |
++| `session.py` | JSON sessions in Redis, per-thread lock, duplicate-event guard, stop flag, quote-to-session map. |
++| `slack_ui.py` | Pure builders for every Slack payload. |
++| `suggestions.py`, `followups.py` | Rules for speaking first. No model involved. |
++| `copy.py`, `voice.py` | Every fixed sentence, and the voice rules they are tested against. |
++| `audit.py` | One `TurnRecord` per turn. |
++
++**Adapters**
++
++| File | What it does |
++|---|---|
++| `entry.py` | `agent_enabled_for`, `respond_with_agent` (what the seam calls), shared store and model client. |
++| `facts.py` | Builds `AgentFacts` from the Bolt context after `ray_connection`. |
++| `straker_tools.py` | Binds each tool to an existing function. The only calls into the app. |
++| `slack_port.py` | Slack calls. Agent APIs go through `client.api_call` because slack-sdk 3.41 predates them; falls back to plain messages where they are unavailable. |
++| `bolt.py` | Agent listeners: approve, decline, stop, quick actions. |
++| `events.py` | `notify_backend_event`, called from `/ray/events`. |
++| `scheduler.py` | Cron definitions for follow-ups and digest. Not wired. |
++
++## The five edits to existing files
++
++| File | Edit |
++|---|---|
++| `app/config.py` | Six settings after `media_configure_admin_only`. |
++| `app/slack/listener_actions.py` | In `respond_to_message`, immediately before `watson_message(...)`: if the agent is enabled and handles the message, return. If the agent fails, `respond_with_agent` returns `False` and Watson answers as before. |
++| `app/slack/listeners.py` | Registers the agent's listeners above the catch-all `@app.event(re.compile(r".+"))`, only when enabled. Adds `arbitr` to the slash-command pattern. |
++| `app/routers/ray.py` | One call at the top of `ray_events`. It never raises. |
++| `Pipfile`, `.env.example` | `anthropic`, and the variables above. |
++
++`git diff --stat origin/master -- app/config.py app/slack/listener_actions.py app/slack/listeners.py app/routers/ray.py`
++shows the size: under 40 lines.
++
++## What a turn does
++
++1. **Claim the event.** The agent keeps its own duplicate guard keyed on the Slack event.
++   The app's `is_duplicate_event` needs an `enterprise_id`, so workspaces outside
++   Enterprise Grid have none; without this a Slack retry would run, and bill, a turn twice.
++2. **Lock the thread**, load or create the session, append the message.
++3. **Facts first.** `facts_from_context` tells the agent who the person is, whether they
++   are connected, whether they may see quotes (`user_may_receive_quotes`), whether the
++   workspace is IBM (`is_ibm_customer_enterprise`), and their locale. The model is told
++   these; it never works them out.
++4. **Reason.** Up to eight model steps. Look-up tools run immediately. A gated tool does
++   not run: the runner creates a pending approval, shows buttons, and tells the model the
++   approval is waiting.
++5. **Reply**, save, write one audit record.
++
++Slack attaches buttons only when a streamed message ends, so a request and its execution
++are two messages with two plans. "Waiting on you" is the session status (`suspended`),
++never a task card: Slack's task cards have no waiting state.
++
++## Money and posting
++
++The agent cannot submit, accept, pay for or cancel anything. This is structural:
++
++- **Quoted work.** The agent never calls a submission or acceptance function. With
++  `AGENT_NATIVE_DOCUMENT_QUOTES=true` and a person who may see quotes, it calls
++  `enqueue_document_mt_quote_preflight`, which only prices. Your existing quote message,
++  your Accept button and your validation do the rest.
++- **People who cannot see quotes** are handed the existing Document MT form through a
++  button, so their experience, including the one click on Submit, is exactly today's.
++- **Posting for others to see** (`post_translation_publicly`) is the one gated tool. It runs
++  only from `handle_approval` after `ApprovalGate.verify`: the click must come from the
++  person who asked, within 15 minutes, once, on a session that has not been stopped. The
++  button carries only a random id; the action that runs is the input stored at proposal
++  time. Sabotaging `is_gated` makes seven tests fail.
++- **Inline translation is metered, not quoted**, exactly as the translate shortcut is today:
++  `require_mt_tokens`, then `get_mt_translation`. The agent says so when it offers a public post.
++- `tests/agent/test_adapters_static.py` parses the adapters and fails if they reference
++  `enqueue_document_mt_submission`, `document_machine_translate`, `handle_document_mt_submit`,
++  `accept_document_mt_quote`, `cancel_document_mt_quote`, `new_job`, `cancel_job`,
++  `submit_job`, `create_human_job` or `mark_document_mt_quote_accepted`.
++
++Stop (Slack's native button, `agent_session_stopped`) cancels anything not yet approved.
++Work already accepted and paid for carries on; cancelling a paid job stays its own explicit action.
++
++## What the language model sees
++
++It sees the person's request, the facts above, and file metadata (name, type, size). It
++never sees document contents, file URLs, or channel thread text: `translate_text` with
++`use_current_thread` fetches the thread and sends it to the MT service without returning
++it to the model. Text inside a message, file name or tool result is treated as information,
++never as an instruction.
++
++Sub-processor impact: Anthropic (or Claude through AWS Bedrock or Google Vertex, since the
++port is vendor-neutral) receives conversation text typed to the agent. The Marketplace
++security tab currently names gpt-3.5-turbo on Azure OpenAI, yet there is no LLM client
++anywhere in this repository. That tab needs correcting whichever way this goes.
++
++Suggestions: the app already receives messages in channels it is a member of; that is how
++channel auto-translate works. A suggestion would add one `/mt/detect` call to LanguageCloud
++and nothing to the model provider. `suggestions.decide` has no parameter that could carry
++message text, and a test enforces that.
++
++## Failure behaviour
++
++| Situation | What the person sees |
++|---|---|
++| Model unreachable, rate limited, 5xx | Fixed copy plus quick-action buttons that work without the model. |
++| Tool raises | The model is told once, with no exception text. A second failure ends the turn with fixed copy. |
++| Model refuses | Fixed copy. |
++| Eight steps without finishing | Fixed copy. |
++| Any unexpected exception in the agent | `notify_exception`, then Watson answers as today. |
++| IBM workspace, reply mentions connecting, balances or top-ups | Reply replaced with safe fixed copy; outcome recorded as `partial`. |
++| Person who cannot see quotes, reply contains an amount | Reply replaced. |
++
++## Documents: why the native quote is off by default
++
++The Document MT form owns the language list (`language_mt_options`), the same-language-family
++rule, the file accessibility check and the duplicate-submission check. `request_document_quote`
++mirrors those steps in the same order and reuses your helpers, but it has not been run, and
++language codes chosen by a model are validated only against `get_language_options()`. Until
++you have reviewed that one function, leave the flag off: everyone gets the form, as today.
++
++## What is not wired
++
++- **Follow-ups and digest.** `followups.py` decides who gets what (one reminder per waiting
++  quote, one note per delivery, quiet hours, opt-in digest) and is tested. `scheduler.py`
++  defines two SAQ cron jobs, but the data access inside them is not written, and nothing
++  registers them. The app has no scheduler today; adding `cron_jobs` to a worker is yours to decide.
++- **Channel suggestions.** Rules and blocks are tested. The trigger in the `message` handler,
++  per-channel state, and the member-language count are not written.
++- **Suggested prompts, feedback buttons, `app_context_changed`, resuming after account connect.**
++  Shown in the POC. Suggested prompts need `app_home_opened`, which already has a listener
++  here, and Bolt runs only the first matching listener, so it needs an edit to yours.
++- **Localisation.** The fixed copy in `core/copy.py` is English only and is not yet passed
++  through `_()`. Model-written replies already follow the person's language.
++- **Session storage** is Redis with a seven-day TTL, keys under `slack-ray-translator:agent:`.
++  A table would be better for audit; database changes are yours.
++
++## Voice
++
++In conversation the agent speaks as "I". Notices, buttons and attributions name Arbitr. It
++never says "we", which would blur an automated actor into a team of people. No exclamation
++marks, no emoji, no long dashes, never "users". A refusal has three parts: what happened,
++why, what happens next. `core/voice.py` checks all of this mechanically and every fixed
++string in `core/copy.py` is tested against it. New fixed copy belongs in `copy.py`, and the
++adapter should pass it through `_()` when you localise it.
+diff --git a/manifest.agent.yml b/manifest.agent.yml
+new file mode 100644
+index 00000000..4e14af6b
+--- /dev/null
++++ b/manifest.agent.yml
+@@ -0,0 +1,122 @@
++# Dev Slack app for the Arbitr agent. A copy of manifest.yml with the agent additions,
++# kept separate so manifest.yml is untouched. See docs/arbitr-agent-runbook.md.
++#
++# Added: agent_view, the assistant:write scope, three agent events, /arbitr beside /straker.
++# Field names follow docs.slack.dev/ai (read 2026-09-21): the migration guide names
++# `agent_view` and `agent_description`. They have not been validated by creating an app;
++# if Slack rejects the manifest, check those two names first.
++#
++# app/slack/listeners.py accepts slash commands containing ray, straker, lc or arbitr.
++display_information:
++  name: Arbitr (dev)
++  description: Get high-quality translations of your files directly in Slack.
++  background_color: "#17395c"
++  long_description:
++    "Straker Translate for Slack helps you streamline your translation tasks all in one place. Manage all of your translation projects without leaving your work environment.\r
++
++    \r
++
++    Users of the Straker LanguageCloud can use Straker Translate for Slack to:\r
++
++    • Check job status\r
++
++    • Receive a job summary\r
++
++    • Request Translations (Submit Quote)\r
++
++    • Approve a quote\r
++
++    • Receive translated files\r
++
++    • Translate your conversations in channels to other languages\r
++
++    \r
++
++    In addition, LanguageCloud admin users can utilize Straker Translate for Slack to:\r
++
++    • Approve new signed-up users\r
++
++    \r
++
++    Install the Straker app to your Slack workspace, connect your account and use Straker’s bot to ask about key events happening in your translation projects, all without having to leave the familiarity of Slack.\r
++
++    \r
++
++    About Straker\r
++
++    - Straker provides next-generation language cloud solutions supported by a state-of-the-art technology stack and robust AI layers to boost productivity, reduce friction and move faster with a new holistic approach to translation and localization. \r
++
++    - By combining technical innovation and linguistic expertise, Straker delivers effortless accuracy through cost-effective and scalable translation solutions to global clients."
++features:
++  agent_view:
++    agent_description: Translate text and documents, check translation jobs, and open the forms for subtitles, quality evaluation and human review.
++  app_home:
++    home_tab_enabled: true
++    messages_tab_enabled: true
++    messages_tab_read_only_enabled: false
++  bot_user:
++    display_name: Arbitr
++    always_online: true
++  shortcuts:
++    - name: AI Translate
++      type: message
++      callback_id: shortcut_translate
++      description: Translate this message to your locale
++    - name: New Translation Job
++      type: message
++      callback_id: new_job
++      description: Submit a new translation job
++  slash_commands:
++    - command: /arbitr
++      url: <YOUR_DOMAIN>/slack/events
++      description: Job Status, Daily Summary, Submit a New Job
++      usage_hint: "[job reference], my jobs, new"
++      should_escape: false
++    - command: /straker
++      url: <YOUR_DOMAIN>/slack/events
++      description: Job Status, Daily Summary, Submit a New Job
++      usage_hint: "[job reference], my jobs, new"
++      should_escape: false
++oauth_config:
++  redirect_urls:
++    - <YOUR_DOMAIN>/slack/oauth_redirect
++  scopes:
++    bot:
++      - app_mentions:read
++      - assistant:write
++      - channels:history
++      - channels:join
++      - channels:read
++      - chat:write
++      - chat:write.public
++      - commands
++      - files:read
++      - files:write
++      - groups:history
++      - groups:read
++      - im:history
++      - mpim:history
++      - users:read
++      - users:read.email
++settings:
++  event_subscriptions:
++    request_url: <YOUR_DOMAIN>/slack/events
++    bot_events:
++      - app_home_opened
++      - app_mention
++      - app_uninstalled
++      - message.channels
++      - message.groups
++      - message.im
++      - message.mpim
++      - channel_deleted
++      - app_context_changed
++      - agent_session_stopped
++      - agent_session_title_changed
++  interactivity:
++    is_enabled: true
++    request_url: <YOUR_DOMAIN>/slack/events
++    message_menu_options_url: <YOUR_DOMAIN>/slack/events
++  org_deploy_enabled: false
++  socket_mode_enabled: false
++  token_rotation_enabled: false
+diff --git a/tests/agent/test_adapters_static.py b/tests/agent/test_adapters_static.py
+index 71841e6b..908238e5 100644
+--- a/tests/agent/test_adapters_static.py
++++ b/tests/agent/test_adapters_static.py
+@@ -99,3 +99,13 @@ def test_the_event_bridge_cannot_raise_into_the_router():
+     assert len(body) == 1 and isinstance(body[0], ast.Try)
+     handler = body[0].handlers[0]
+     assert isinstance(handler.type, ast.Name) and handler.type.id == "Exception"
++
++
++def test_the_slash_command_pattern_accepts_arbitr_and_still_accepts_straker():
++    import re
++
++    listeners = (ROOT / "app/slack/listeners.py").read_text()
++    pattern = re.search(r'@app\.command\(re\.compile\(r"(.+?)"\)\)', listeners).group(1)
++    for command in ("/arbitr", "/straker", "/ray", "/lc"):
++        assert re.fullmatch(pattern, command), command
++    assert not re.fullmatch(pattern, "/giphy")
+-- 
+2.50.1 (Apple Git-155)
+

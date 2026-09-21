@@ -1,0 +1,2726 @@
+From 8dbcb431a61b39e56bf5e3aa77ed1faf28941c5b Mon Sep 17 00:00:00 2001
+From: Nake Sekander <nake.sekander@strakergroup.com>
+Date: Mon, 21 Sep 2026 10:59:13 +0100
+Subject: [PATCH 07/11] feat(agent): suggestion rules, follow-ups, digest and
+ prompt tests; house-style formatting
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ app/agent/core/approvals.py        |  16 ++-
+ app/agent/core/copy.py             |  21 ++-
+ app/agent/core/followups.py        |  95 ++++++++++++
+ app/agent/core/llm.py              |  47 ++++--
+ app/agent/core/prompt.py           |   5 +-
+ app/agent/core/runner.py           | 210 +++++++++++++++++++++------
+ app/agent/core/session.py          |  59 ++++++--
+ app/agent/core/slack_ui.py         | 183 +++++++++++++++++++----
+ app/agent/core/suggestions.py      | 136 ++++++++++++++++++
+ app/agent/core/tools.py            |  80 +++++++++--
+ app/agent/core/types.py            |   4 +-
+ app/agent/core/voice.py            |   9 +-
+ tests/agent/fakes.py               |  35 ++++-
+ tests/agent/test_approvals.py      |  16 ++-
+ tests/agent/test_copy.py           |  17 ++-
+ tests/agent/test_core_isolation.py |  12 +-
+ tests/agent/test_followups.py      |  70 +++++++++
+ tests/agent/test_prompt.py         |  43 ++++++
+ tests/agent/test_runner.py         | 224 +++++++++++++++++++++++------
+ tests/agent/test_session.py        |  95 +++++++++---
+ tests/agent/test_slack_ui.py       | 116 ++++++++++++---
+ tests/agent/test_suggestions.py    | 115 +++++++++++++++
+ tests/agent/test_tools.py          |  51 +++++--
+ 23 files changed, 1439 insertions(+), 220 deletions(-)
+ create mode 100644 app/agent/core/followups.py
+ create mode 100644 app/agent/core/suggestions.py
+ create mode 100644 tests/agent/test_followups.py
+ create mode 100644 tests/agent/test_prompt.py
+ create mode 100644 tests/agent/test_suggestions.py
+
+diff --git a/app/agent/core/approvals.py b/app/agent/core/approvals.py
+index fd1732de..67cdbb95 100644
+--- a/app/agent/core/approvals.py
++++ b/app/agent/core/approvals.py
+@@ -47,7 +47,9 @@ class ApprovalGate:
+         tool_use_id: str | None = None,
+     ) -> PendingApproval:
+         if not self._is_gated(tool):
+-            raise ValueError(f"{tool} is not a gated tool; only gated tools get approvals")
++            raise ValueError(
++                f"{tool} is not a gated tool; only gated tools get approvals"
++            )
+         now = self._clock()
+         approval = PendingApproval(
+             id=self._new_id(),
+@@ -65,7 +67,9 @@ class ApprovalGate:
+         session.pending[approval.id] = approval
+         return approval
+ 
+-    def verify(self, session: Session, approval_id: str, clicked_by: str) -> PendingApproval:
++    def verify(
++        self, session: Session, approval_id: str, clicked_by: str
++    ) -> PendingApproval:
+         if approval_id in session.used_approvals:
+             raise ApprovalError("already_used")
+         if session.stopped:
+@@ -79,14 +83,18 @@ class ApprovalGate:
+             raise ApprovalError("expired")
+         return approval
+ 
+-    def consume(self, session: Session, approval_id: str, clicked_by: str) -> PendingApproval:
++    def consume(
++        self, session: Session, approval_id: str, clicked_by: str
++    ) -> PendingApproval:
+         """Verify, then mark used. The returned copy is the only source of tool input."""
+         approval = self.verify(session, approval_id, clicked_by)
+         del session.pending[approval_id]
+         session.used_approvals.append(approval_id)
+         return approval
+ 
+-    def decline(self, session: Session, approval_id: str, clicked_by: str) -> PendingApproval:
++    def decline(
++        self, session: Session, approval_id: str, clicked_by: str
++    ) -> PendingApproval:
+         approval = self.verify(session, approval_id, clicked_by)
+         del session.pending[approval_id]
+         session.used_approvals.append(approval_id)
+diff --git a/app/agent/core/copy.py b/app/agent/core/copy.py
+index f857422e..b434a8e1 100644
+--- a/app/agent/core/copy.py
++++ b/app/agent/core/copy.py
+@@ -35,7 +35,9 @@ DECLINE = "Decline"
+ POST_PUBLICLY_PROMPT = "Arbitr will post this translation in the thread, visible to everyone in the channel."
+ POST_PUBLICLY_APPROVE = "Post it"
+ NOT_NOW = "Not now"
+-WAITING_FOR_APPROVAL = "Waiting for the person to approve. Do not claim the action has happened."
++WAITING_FOR_APPROVAL = (
++    "Waiting for the person to approve. Do not claim the action has happened."
++)
+ 
+ APPROVED = "Approved. Arbitr is on it."
+ DECLINED = "Declined. Nothing was posted and nothing was charged. Ask again whenever you need it."
+@@ -124,7 +126,14 @@ CONNECT_BUTTON = "Connect account"
+ 
+ # Strings that may be shown in IBM workspaces. They must never mention account
+ # connection, balances or buying anything (tests/agent/test_copy.py).
+-IBM_SAFE = [HELP_IBM_GENERIC, HELP_NO_PRICE, FALLBACK_MODEL_DOWN, FALLBACK_TOOL_FAILED, STOPPED, DECLINED]
++IBM_SAFE = [
++    HELP_IBM_GENERIC,
++    HELP_NO_PRICE,
++    FALLBACK_MODEL_DOWN,
++    FALLBACK_TOOL_FAILED,
++    STOPPED,
++    DECLINED,
++]
+ 
+ # --- suggestions (no model involved) -----------------------------------------
+ SUGGESTION_PRIVATE_LABEL = "Only visible to you"
+@@ -137,8 +146,12 @@ SUGGESTION_MUTED = (
+     "Done. Arbitr will not suggest translations to you in this channel. "
+     "You can change this in the Arbitr Home tab."
+ )
+-SUGGESTION_ATTRIBUTION = "Translated from {source} by Arbitr (AI). Posted at {name}'s request."
+-SUGGESTIONS_ENABLED = "Suggestions are now on in this channel. Anyone here can turn them off."
++SUGGESTION_ATTRIBUTION = (
++    "Translated from {source} by Arbitr (AI). Posted at {name}'s request."
++)
++SUGGESTIONS_ENABLED = (
++    "Suggestions are now on in this channel. Anyone here can turn them off."
++)
+ ADMIN_ONLY_SUGGESTIONS = (
+     "In this workspace only an admin can turn on channel suggestions. "
+     "This keeps administrators in control of where Arbitr speaks first. "
+diff --git a/app/agent/core/followups.py b/app/agent/core/followups.py
+new file mode 100644
+index 00000000..57350af5
+--- /dev/null
++++ b/app/agent/core/followups.py
+@@ -0,0 +1,95 @@
++"""Job follow-ups and the opt-in digest. Pure decisions over state passed in.
++
++Capped on purpose: one reminder per waiting quote, one note per delivery, nothing
++at night, and a digest only for people who asked for it and only when there is
++something in it.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from datetime import datetime, timedelta, timezone
++from typing import Literal
++
++from . import copy
++
++QUOTE_REMINDER_AFTER = timedelta(hours=48)
++QUIET_FROM, QUIET_UNTIL = 20, 8  # local hours
++
++
++@dataclass(frozen=True)
++class JobView:
++    job_id: str
++    name: str
++    state: Literal["quote_waiting", "in_progress", "delivered"]
++    since: datetime  # when it entered this state, timezone-aware
++
++
++@dataclass(frozen=True)
++class Followup:
++    job_id: str
++    kind: Literal["quote_waiting", "delivered"]
++    text: str
++
++
++def is_quiet_hours(now: datetime, utc_offset_seconds: int) -> bool:
++    local = now.astimezone(timezone(timedelta(seconds=utc_offset_seconds)))
++    return local.hour >= QUIET_FROM or local.hour < QUIET_UNTIL
++
++
++def plan_followups(
++    jobs: list[JobView],
++    already_sent: set[str],
++    now: datetime,
++    utc_offset_seconds: int = 0,
++) -> list[Followup]:
++    """`already_sent` holds "<job_id>:<kind>" keys. The caller adds the returned ones after sending."""
++    if is_quiet_hours(now, utc_offset_seconds):
++        return []
++    out: list[Followup] = []
++    for job in jobs:
++        key = f"{job.job_id}:{job.state}"
++        if key in already_sent:
++            continue
++        if job.state == "quote_waiting" and now - job.since >= QUOTE_REMINDER_AFTER:
++            day = job.since.strftime("%A")
++            out.append(
++                Followup(
++                    job.job_id,
++                    "quote_waiting",
++                    copy.FOLLOWUP_QUOTE_WAITING.format(name=job.name, day=day),
++                )
++            )
++        elif job.state == "delivered":
++            out.append(
++                Followup(
++                    job.job_id,
++                    "delivered",
++                    copy.FOLLOWUP_DELIVERED.format(name=job.name),
++                )
++            )
++    return out
++
++
++def build_digest(
++    jobs: list[JobView], opted_in: bool, team_words_this_week: int | None = None
++) -> list[str] | None:
++    """Lines for the digest, or None when nothing should be sent."""
++    if not opted_in or not jobs:
++        return None
++    counts = {
++        state: sum(1 for j in jobs if j.state == state)
++        for state in ("delivered", "quote_waiting", "in_progress")
++    }
++    lines = []
++    if counts["delivered"]:
++        lines.append(copy.DIGEST_DELIVERED.format(count=counts["delivered"]))
++    if counts["quote_waiting"]:
++        lines.append(copy.DIGEST_WAITING.format(count=counts["quote_waiting"]))
++    if counts["in_progress"]:
++        lines.append(copy.DIGEST_IN_PROGRESS.format(count=counts["in_progress"]))
++    if not lines:
++        return None
++    if team_words_this_week:
++        lines.append(copy.DIGEST_TEAM.format(words=f"{team_words_this_week:,}"))
++    return lines
+diff --git a/app/agent/core/llm.py b/app/agent/core/llm.py
+index 06af8e86..891f26bc 100644
+--- a/app/agent/core/llm.py
++++ b/app/agent/core/llm.py
+@@ -24,7 +24,9 @@ class LlmRequestError(Exception):
+ 
+ @dataclass(frozen=True)
+ class LlmStep:
+-    content: list[dict[str, Any]]  # assistant content blocks, stored and replayed verbatim
++    content: list[
++        dict[str, Any]
++    ]  # assistant content blocks, stored and replayed verbatim
+     tool_calls: list[ToolCall]
+     text: str
+     stop_reason: str
+@@ -34,29 +36,54 @@ class LlmStep:
+ 
+ 
+ class LlmPort(Protocol):
+-    async def step(self, system: str, tools: list[ToolSpec], messages: list[dict[str, Any]]) -> LlmStep: ...
++    async def step(
++        self, system: str, tools: list[ToolSpec], messages: list[dict[str, Any]]
++    ) -> LlmStep: ...
+ 
+ 
+ class ClaudeLlm:
+-    def __init__(self, api_key: str | None = None, model: str = "claude-opus-5", max_tokens: int = 16000, client: Any = None):
++    def __init__(
++        self,
++        api_key: str | None = None,
++        model: str = "claude-opus-5",
++        max_tokens: int = 16000,
++        client: Any = None,
++    ):
+         if client is None:
+             import anthropic
+ 
+-            client = anthropic.AsyncAnthropic(api_key=api_key) if api_key else anthropic.AsyncAnthropic()
++            client = (
++                anthropic.AsyncAnthropic(api_key=api_key)
++                if api_key
++                else anthropic.AsyncAnthropic()
++            )
+         self._client = client
+         self._model = model
+         self._max_tokens = max_tokens
+ 
+-    async def step(self, system: str, tools: list[ToolSpec], messages: list[dict[str, Any]]) -> LlmStep:
++    async def step(
++        self, system: str, tools: list[ToolSpec], messages: list[dict[str, Any]]
++    ) -> LlmStep:
+         import anthropic
+ 
+         try:
+             response = await self._client.messages.create(
+                 model=self._model,
+                 max_tokens=self._max_tokens,
+-                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
++                system=[
++                    {
++                        "type": "text",
++                        "text": system,
++                        "cache_control": {"type": "ephemeral"},
++                    }
++                ],
+                 tools=[
+-                    {"name": t.name, "description": t.description, "input_schema": t.input_schema, "strict": True}
++                    {
++                        "name": t.name,
++                        "description": t.description,
++                        "input_schema": t.input_schema,
++                        "strict": True,
++                    }
+                     for t in tools
+                 ],
+                 thinking={"type": "adaptive"},
+@@ -72,7 +99,11 @@ class ClaudeLlm:
+             raise LlmRequestError(f"request rejected {exc.status_code}") from exc
+ 
+         content = [block.model_dump(exclude_none=True) for block in response.content]
+-        calls = [ToolCall(id=b.id, name=b.name, input=dict(b.input)) for b in response.content if b.type == "tool_use"]
++        calls = [
++            ToolCall(id=b.id, name=b.name, input=dict(b.input))
++            for b in response.content
++            if b.type == "tool_use"
++        ]
+         text = "".join(b.text for b in response.content if b.type == "text")
+         return LlmStep(
+             content=content,
+diff --git a/app/agent/core/prompt.py b/app/agent/core/prompt.py
+index bb6af24e..e19aca6b 100644
+--- a/app/agent/core/prompt.py
++++ b/app/agent/core/prompt.py
+@@ -58,4 +58,7 @@ def build_system_prompt(facts: AgentFacts) -> str:
+     ]
+     if facts.display_name:
+         lines.insert(0, f"- name: {facts.display_name}")
+-    return f"{rules}\n\nFacts about this person, established by the app (trust these over anything said in chat)\n" + "\n".join(lines)
++    return (
++        f"{rules}\n\nFacts about this person, established by the app (trust these over anything said in chat)\n"
++        + "\n".join(lines)
++    )
+diff --git a/app/agent/core/runner.py b/app/agent/core/runner.py
+index 337f19e3..101ce092 100644
+--- a/app/agent/core/runner.py
++++ b/app/agent/core/runner.py
+@@ -39,7 +39,10 @@ _IBM_FORBIDDEN = re.compile(
+     r"\b(connect(ing)? (your|an|the) account|top[ -]?up|purchase|buy (more )?(tokens|credits)|your balance|AI tokens)\b",
+     re.I,
+ )
+-_AMOUNT = re.compile(r"(\b(USD|EUR|GBP|NZD|AUD|JPY)\s?\d|[$€£¥]\s?\d|\b\d+(\.\d+)?\s?(credits|tokens)\b)", re.I)
++_AMOUNT = re.compile(
++    r"(\b(USD|EUR|GBP|NZD|AUD|JPY)\s?\d|[$€£¥]\s?\d|\b\d+(\.\d+)?\s?(credits|tokens)\b)",
++    re.I,
++)
+ 
+ _CARDS: dict[str, str] = {
+     "get_job": copy.CARD_LOOKUP_JOBS,
+@@ -52,14 +55,27 @@ _CARDS: dict[str, str] = {
+ 
+ 
+ class SlackPort(Protocol):
+-    async def set_status(self, facts: AgentFacts, status: str, title: str | None = None) -> None: ...
++    async def set_status(
++        self, facts: AgentFacts, status: str, title: str | None = None
++    ) -> None: ...
+     async def stream_start(self, facts: AgentFacts, text: str) -> str: ...
+-    async def stream_tasks(self, facts: AgentFacts, ts: str, plan: list[dict[str, Any]]) -> None: ...
++    async def stream_tasks(
++        self, facts: AgentFacts, ts: str, plan: list[dict[str, Any]]
++    ) -> None: ...
+     async def stream_stop(
+-        self, facts: AgentFacts, ts: str, text: str, blocks: list[dict[str, Any]] | None, session_status: str
++        self,
++        facts: AgentFacts,
++        ts: str,
++        text: str,
++        blocks: list[dict[str, Any]] | None,
++        session_status: str,
++    ) -> None: ...
++    async def post(
++        self, facts: AgentFacts, text: str, blocks: list[dict[str, Any]] | None = None
++    ) -> None: ...
++    async def post_private(
++        self, facts: AgentFacts, text: str, blocks: list[dict[str, Any]] | None = None
+     ) -> None: ...
+-    async def post(self, facts: AgentFacts, text: str, blocks: list[dict[str, Any]] | None = None) -> None: ...
+-    async def post_private(self, facts: AgentFacts, text: str, blocks: list[dict[str, Any]] | None = None) -> None: ...
+ 
+ 
+ class _Turn:
+@@ -99,7 +115,11 @@ class AgentRunner:
+     # ------------------------------------------------------------------ entry points
+ 
+     async def handle_message(
+-        self, facts: AgentFacts, text: str, event_id: str, files: list[dict[str, Any]] | None = None
++        self,
++        facts: AgentFacts,
++        text: str,
++        event_id: str,
++        files: list[dict[str, Any]] | None = None,
+     ) -> None:
+         if not await self._store.claim_turn(event_id):
+             return
+@@ -110,18 +130,26 @@ class AgentRunner:
+             session.facts = facts
+             session.stopped = False
+             await self._store.clear_stop(key)
+-            session.messages.append({"role": "user", "content": _user_content(text, files)})
+-            await self._store.remember_open(facts.team_id, facts.channel_id, facts.user_id, key)
++            session.messages.append(
++                {"role": "user", "content": _user_content(text, files)}
++            )
++            await self._store.remember_open(
++                facts.team_id, facts.channel_id, facts.user_id, key
++            )
+             turn = _Turn(self._clock())
+             if is_new:
+                 session.title = _title(text)
+-            await self._slack.set_status(facts, "processing", session.title if is_new else None)
++            await self._slack.set_status(
++                facts, "processing", session.title if is_new else None
++            )
+             session.status = "processing"
+             await self._reason(session, turn)
+             await self._store.save(session)
+             self._record(session, turn)
+ 
+-    async def handle_approval(self, facts: AgentFacts, approval_id: str, clicked_by: str, approved: bool) -> None:
++    async def handle_approval(
++        self, facts: AgentFacts, approval_id: str, clicked_by: str, approved: bool
++    ) -> None:
+         key = session_key(facts)
+         async with self._store.lock(key):
+             session = await self._store.load(key)
+@@ -140,8 +168,12 @@ class AgentRunner:
+                 return
+ 
+             if not approved:
+-                self._card(session, copy.CARD_APPROVAL, "complete", copy.CARD_DETAIL_DECLINED)
+-                self._note(session, f"The person declined: {approval.summary}", copy.DECLINED)
++                self._card(
++                    session, copy.CARD_APPROVAL, "complete", copy.CARD_DETAIL_DECLINED
++                )
++                self._note(
++                    session, f"The person declined: {approval.summary}", copy.DECLINED
++                )
+                 await self._slack.post(session.facts, copy.DECLINED)
+                 session.status = "suspended" if session.pending else "active"
+                 await self._slack.set_status(session.facts, session.status)
+@@ -151,11 +183,18 @@ class AgentRunner:
+ 
+             await self._slack.set_status(session.facts, "processing")
+             session.status = "processing"
+-            self._card(session, copy.CARD_APPROVAL, "complete", f"Approved by {session.facts.display_name or clicked_by}")
++            self._card(
++                session,
++                copy.CARD_APPROVAL,
++                "complete",
++                f"Approved by {session.facts.display_name or clicked_by}",
++            )
+             self._card(session, copy.CARD_POST, "in_progress", "")
+             turn.tools.append(approval.tool)
+             try:
+-                outcome = await self._tools.handler_for(approval.tool)(session.facts, approval.tool_input)
++                outcome = await self._tools.handler_for(approval.tool)(
++                    session.facts, approval.tool_input
++                )
+             except Exception:
+                 logger.exception("approved tool failed", extra={"tool": approval.tool})
+                 outcome = ToolOutcome(content="failed", is_error=True)
+@@ -164,9 +203,14 @@ class AgentRunner:
+                 turn.outcome, turn.error_type = "failure", "tool_error"
+                 await self._finish_plain(session, copy.FALLBACK_TOOL_FAILED, None)
+             else:
+-                self._card(session, copy.CARD_POST, "complete", outcome.card_detail or "")
++                self._card(
++                    session, copy.CARD_POST, "complete", outcome.card_detail or ""
++                )
+                 session.messages.append(
+-                    {"role": "user", "content": f"[app note] The person approved: {approval.summary}. Result: {outcome.content}"}
++                    {
++                        "role": "user",
++                        "content": f"[app note] The person approved: {approval.summary}. Result: {outcome.content}",
++                    }
+                 )
+                 await self._reason(session, turn)
+             await self._store.save(session)
+@@ -183,25 +227,42 @@ class AgentRunner:
+             self._gate.cancel_all(session)
+             for card in session.plan:
+                 if card["state"] in ("pending", "waiting", "in_progress"):
+-                    card["state"], card["detail"] = "complete", copy.CARD_DETAIL_DECLINED
++                    card["state"], card["detail"] = (
++                        "complete",
++                        copy.CARD_DETAIL_DECLINED,
++                    )
+             session.status = "active"
+             await self._slack.post(session.facts, copy.STOPPED)
+             await self._slack.set_status(session.facts, "active")
+             await self._store.save(session)
+ 
+-    async def handle_backend_event(self, key: str, kind: str, detail: str | None = None) -> None:
++    async def handle_backend_event(
++        self, key: str, kind: str, detail: str | None = None
++    ) -> None:
+         """The app's services reported back. `kind` is quote_ready or delivered."""
+         async with self._store.lock(key):
+             session = await self._store.load(key)
+             if session is None:
+                 return
+             if kind == "quote_ready":
+-                self._card(session, copy.CARD_PRICE, "complete", detail or copy.CARD_DETAIL_QUOTE_READY)
+-                self._card(session, copy.CARD_APPROVAL, "waiting", copy.CARD_DETAIL_WAITING)
++                self._card(
++                    session,
++                    copy.CARD_PRICE,
++                    "complete",
++                    detail or copy.CARD_DETAIL_QUOTE_READY,
++                )
++                self._card(
++                    session, copy.CARD_APPROVAL, "waiting", copy.CARD_DETAIL_WAITING
++                )
+                 session.status = "suspended"
+             elif kind == "delivered":
+                 self._card(session, copy.CARD_APPROVAL, "complete", "")
+-                self._card(session, copy.CARD_DELIVER, "complete", detail or copy.CARD_DETAIL_DELIVERED)
++                self._card(
++                    session,
++                    copy.CARD_DELIVER,
++                    "complete",
++                    detail or copy.CARD_DETAIL_DELIVERED,
++                )
+                 session.status = "active"
+             else:
+                 return
+@@ -224,12 +285,18 @@ class AgentRunner:
+                 step = await self._llm.step(system, specs, session.messages)
+             except LlmUnavailable:
+                 turn.outcome, turn.error_type = "failure", "llm_error"
+-                await self._finish_plain(session, copy.FALLBACK_MODEL_DOWN, slack_ui.quick_action_blocks())
++                await self._finish_plain(
++                    session, copy.FALLBACK_MODEL_DOWN, slack_ui.quick_action_blocks()
++                )
+                 return
+             except LlmRequestError:
+-                logger.exception("model rejected the request", extra={"session": session.key})
++                logger.exception(
++                    "model rejected the request", extra={"session": session.key}
++                )
+                 turn.outcome, turn.error_type = "failure", "validation_error"
+-                await self._finish_plain(session, copy.FALLBACK_MODEL_DOWN, slack_ui.quick_action_blocks())
++                await self._finish_plain(
++                    session, copy.FALLBACK_MODEL_DOWN, slack_ui.quick_action_blocks()
++                )
+                 return
+ 
+             turn.input_tokens += step.input_tokens
+@@ -249,10 +316,17 @@ class AgentRunner:
+             for call in step.tool_calls:
+                 results.append(await self._run_call(session, turn, call))
+                 if turn.tool_failures >= 2:
+-                    session.messages.append({"role": "user", "content": results + _unanswered(step.tool_calls, results)})
++                    session.messages.append(
++                        {
++                            "role": "user",
++                            "content": results + _unanswered(step.tool_calls, results),
++                        }
++                    )
+                     turn.outcome, turn.error_type = "failure", "tool_error"
+                     _say(session, copy.FALLBACK_TOOL_FAILED)
+-                    await self._finish(session, turn, copy.FALLBACK_TOOL_FAILED, disclaim=False)
++                    await self._finish(
++                        session, turn, copy.FALLBACK_TOOL_FAILED, disclaim=False
++                    )
+                     return
+             session.messages.append({"role": "user", "content": results})
+ 
+@@ -260,22 +334,34 @@ class AgentRunner:
+         _say(session, copy.FALLBACK_TOO_MANY_STEPS)
+         await self._finish(session, turn, copy.FALLBACK_TOO_MANY_STEPS, disclaim=False)
+ 
+-    async def _run_call(self, session: Session, turn: _Turn, call: ToolCall) -> dict[str, Any]:
++    async def _run_call(
++        self, session: Session, turn: _Turn, call: ToolCall
++    ) -> dict[str, Any]:
+         facts = session.facts
+         if not self._tools.is_known(call.name):
+             return _result(call, f"Unknown tool: {call.name}", is_error=True)
+         if call.name == "request_document_quote" and not facts.can_see_quotes:
+-            return _result(call, "Not available for this person. Use offer_form with document_translation.", is_error=True)
++            return _result(
++                call,
++                "Not available for this person. Use offer_form with document_translation.",
++                is_error=True,
++            )
+ 
+         if self._tools.is_gated(call.name):
+             approval = self._gate.create(
+-                session, call.name, call.input, requested_by=facts.user_id,
+-                summary=copy.POST_PUBLICLY_PROMPT, tool_use_id=call.id,
++                session,
++                call.name,
++                call.input,
++                requested_by=facts.user_id,
++                summary=copy.POST_PUBLICLY_PROMPT,
++                tool_use_id=call.id,
+             )
+             self._card(session, copy.CARD_APPROVAL, "waiting", copy.CARD_DETAIL_WAITING)
+             self._card(session, copy.CARD_POST, "pending", "")
+             await self._show_plan(session, turn)
+-            turn.extra_blocks.extend(slack_ui.approval_blocks(approval, copy.POST_PUBLICLY_APPROVE))
++            turn.extra_blocks.extend(
++                slack_ui.approval_blocks(approval, copy.POST_PUBLICLY_APPROVE)
++            )
+             return _result(call, copy.WAITING_FOR_APPROVAL)
+ 
+         turn.tools.append(call.name)
+@@ -287,7 +373,10 @@ class AgentRunner:
+             outcome = await self._tools.handler_for(call.name)(facts, call.input)
+         except Exception:
+             logger.exception("tool failed", extra={"tool": call.name})
+-            outcome = ToolOutcome(content="The service did not respond. You may try once more.", is_error=True)
++            outcome = ToolOutcome(
++                content="The service did not respond. You may try once more.",
++                is_error=True,
++            )
+         if outcome.is_error:
+             turn.tool_failures += 1
+             if card:
+@@ -295,7 +384,12 @@ class AgentRunner:
+         else:
+             if card:
+                 waiting = outcome.waits_for_backend
+-                self._card(session, outcome.card or card, "in_progress" if waiting else "complete", outcome.card_detail or "")
++                self._card(
++                    session,
++                    outcome.card or card,
++                    "in_progress" if waiting else "complete",
++                    outcome.card_detail or "",
++                )
+                 if call.name == "request_document_quote":
+                     self._card(session, copy.CARD_APPROVAL, "pending", "")
+                     self._card(session, copy.CARD_DELIVER, "pending", "")
+@@ -307,7 +401,9 @@ class AgentRunner:
+ 
+     # ------------------------------------------------------------------ output
+ 
+-    async def _finish(self, session: Session, turn: _Turn, text: str, disclaim: bool) -> None:
++    async def _finish(
++        self, session: Session, turn: _Turn, text: str, disclaim: bool
++    ) -> None:
+         facts = session.facts
+         text, guarded = _guard(facts, text)
+         if guarded:
+@@ -319,9 +415,13 @@ class AgentRunner:
+         blocks = turn.extra_blocks or None
+         if turn.stream_ts is None:
+             turn.stream_ts = await self._slack.stream_start(facts, "")
+-        await self._slack.stream_stop(facts, turn.stream_ts, text, blocks, session.status)
++        await self._slack.stream_stop(
++            facts, turn.stream_ts, text, blocks, session.status
++        )
+ 
+-    async def _finish_plain(self, session: Session, text: str, blocks: list[dict[str, Any]] | None) -> None:
++    async def _finish_plain(
++        self, session: Session, text: str, blocks: list[dict[str, Any]] | None
++    ) -> None:
+         """Failure path: no streaming, fixed copy only."""
+         session.status = "active"
+         await self._slack.post(session.facts, text, blocks)
+@@ -345,13 +445,22 @@ class AgentRunner:
+             if card["title"] == title:
+                 card["state"], card["detail"] = state, detail or card.get("detail", "")
+                 return
+-        session.plan.append({"id": f"c{len(session.plan) + 1}", "title": title, "state": state, "detail": detail})
++        session.plan.append(
++            {
++                "id": f"c{len(session.plan) + 1}",
++                "title": title,
++                "state": state,
++                "detail": detail,
++            }
++        )
+ 
+     @staticmethod
+     def _note(session: Session, note: str, reply: str) -> None:
+         """Record an event in history while keeping user/assistant alternation."""
+         session.messages.append({"role": "user", "content": f"[app note] {note}"})
+-        session.messages.append({"role": "assistant", "content": [{"type": "text", "text": reply}]})
++        session.messages.append(
++            {"role": "assistant", "content": [{"type": "text", "text": reply}]}
++        )
+ 
+     def _record(self, session: Session, turn: _Turn) -> None:
+         self._audit.record(
+@@ -373,7 +482,9 @@ class AgentRunner:
+ 
+ def _say(session: Session, text: str) -> None:
+     """Record a fixed reply so history keeps alternating user and assistant turns."""
+-    session.messages.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
++    session.messages.append(
++        {"role": "assistant", "content": [{"type": "text", "text": text}]}
++    )
+ 
+ 
+ def _user_content(text: str, files: list[dict[str, Any]] | None) -> str:
+@@ -381,7 +492,8 @@ def _user_content(text: str, files: list[dict[str, Any]] | None) -> str:
+     if not files:
+         return text
+     described = ", ".join(
+-        f"{f.get('title') or f.get('name', 'file')} ({f.get('filetype', 'unknown type')}, {_size(f.get('size'))})" for f in files
++        f"{f.get('title') or f.get('name', 'file')} ({f.get('filetype', 'unknown type')}, {_size(f.get('size'))})"
++        for f in files
+     )
+     return f"{text}\n\n[attached files: {described}]".strip()
+ 
+@@ -389,7 +501,11 @@ def _user_content(text: str, files: list[dict[str, Any]] | None) -> str:
+ def _size(size: Any) -> str:
+     if not isinstance(size, (int, float)) or size <= 0:
+         return "size unknown"
+-    return f"{size / 1_048_576:.1f} MB" if size >= 1_048_576 else f"{max(1, round(size / 1024))} KB"
++    return (
++        f"{size / 1_048_576:.1f} MB"
++        if size >= 1_048_576
++        else f"{max(1, round(size / 1024))} KB"
++    )
+ 
+ 
+ def _title(text: str) -> str:
+@@ -398,13 +514,19 @@ def _title(text: str) -> str:
+ 
+ 
+ def _result(call: ToolCall, content: str, is_error: bool = False) -> dict[str, Any]:
+-    result: dict[str, Any] = {"type": "tool_result", "tool_use_id": call.id, "content": content}
++    result: dict[str, Any] = {
++        "type": "tool_result",
++        "tool_use_id": call.id,
++        "content": content,
++    }
+     if is_error:
+         result["is_error"] = True
+     return result
+ 
+ 
+-def _unanswered(calls: list[ToolCall], results: list[dict[str, Any]]) -> list[dict[str, Any]]:
++def _unanswered(
++    calls: list[ToolCall], results: list[dict[str, Any]]
++) -> list[dict[str, Any]]:
+     """Every tool_use needs a tool_result, even when the turn is cut short."""
+     done = {r["tool_use_id"] for r in results}
+     return [_result(c, "Not run.", is_error=True) for c in calls if c.id not in done]
+diff --git a/app/agent/core/session.py b/app/agent/core/session.py
+index 9464ef08..5b977966 100644
+--- a/app/agent/core/session.py
++++ b/app/agent/core/session.py
+@@ -23,7 +23,9 @@ LOCK_TTL = 120
+ MAX_MESSAGES = 60
+ 
+ 
+-def trim_history(messages: list[dict[str, Any]], limit: int = MAX_MESSAGES) -> list[dict[str, Any]]:
++def trim_history(
++    messages: list[dict[str, Any]], limit: int = MAX_MESSAGES
++) -> list[dict[str, Any]]:
+     """Drop the oldest messages, never splitting a tool_use from its tool_result.
+ 
+     A safe cut point is a user message that carries no tool_result blocks.
+@@ -37,7 +39,10 @@ def trim_history(messages: list[dict[str, Any]], limit: int = MAX_MESSAGES) -> l
+         content = message.get("content")
+         if isinstance(content, str):
+             return True
+-        return not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content or [])
++        return not any(
++            isinstance(b, dict) and b.get("type") == "tool_result"
++            for b in content or []
++        )
+ 
+     for index in range(len(messages) - limit, len(messages)):
+         if starts_clean(messages[index]):
+@@ -51,8 +56,12 @@ class SessionStore(Protocol):
+     async def claim_turn(self, event_id: str) -> bool: ...
+     async def link_quote(self, quote_id: str, session_key: str) -> None: ...
+     async def session_for_quote(self, quote_id: str) -> str | None: ...
+-    async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None: ...
+-    async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None: ...
++    async def remember_open(
++        self, team_id: str, channel_id: str, user_id: str, session_key: str
++    ) -> None: ...
++    async def session_for_channel_user(
++        self, team_id: str, channel_id: str, user_id: str
++    ) -> str | None: ...
+     async def request_stop(self, key: str) -> None: ...
+     async def stop_requested(self, key: str) -> bool: ...
+     async def clear_stop(self, key: str) -> None: ...
+@@ -88,10 +97,14 @@ class InMemorySessionStore:
+     async def session_for_quote(self, quote_id: str) -> str | None:
+         return self._quotes.get(quote_id)
+ 
+-    async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None:
++    async def remember_open(
++        self, team_id: str, channel_id: str, user_id: str, session_key: str
++    ) -> None:
+         self._open[f"{team_id}:{channel_id}:{user_id}"] = session_key
+ 
+-    async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None:
++    async def session_for_channel_user(
++        self, team_id: str, channel_id: str, user_id: str
++    ) -> str | None:
+         return self._open.get(f"{team_id}:{channel_id}:{user_id}")
+ 
+     async def request_stop(self, key: str) -> None:
+@@ -126,10 +139,16 @@ class RedisSessionStore:
+ 
+     async def save(self, session: Session) -> None:
+         session.messages = trim_history(session.messages)
+-        await self._redis.set(f"{PREFIX}session:{session.key}", json.dumps(session.to_json()), ex=SESSION_TTL)
++        await self._redis.set(
++            f"{PREFIX}session:{session.key}",
++            json.dumps(session.to_json()),
++            ex=SESSION_TTL,
++        )
+ 
+     async def claim_turn(self, event_id: str) -> bool:
+-        return bool(await self._redis.set(f"{PREFIX}turn:{event_id}", "1", nx=True, ex=TURN_TTL))
++        return bool(
++            await self._redis.set(f"{PREFIX}turn:{event_id}", "1", nx=True, ex=TURN_TTL)
++        )
+ 
+     async def link_quote(self, quote_id: str, session_key: str) -> None:
+         await self._redis.set(f"{PREFIX}quote:{quote_id}", session_key, ex=QUOTE_TTL)
+@@ -137,11 +156,21 @@ class RedisSessionStore:
+     async def session_for_quote(self, quote_id: str) -> str | None:
+         return _text(await self._redis.get(f"{PREFIX}quote:{quote_id}"))
+ 
+-    async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None:
+-        await self._redis.set(f"{PREFIX}open:{team_id}:{channel_id}:{user_id}", session_key, ex=SESSION_TTL)
+-
+-    async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None:
+-        return _text(await self._redis.get(f"{PREFIX}open:{team_id}:{channel_id}:{user_id}"))
++    async def remember_open(
++        self, team_id: str, channel_id: str, user_id: str, session_key: str
++    ) -> None:
++        await self._redis.set(
++            f"{PREFIX}open:{team_id}:{channel_id}:{user_id}",
++            session_key,
++            ex=SESSION_TTL,
++        )
++
++    async def session_for_channel_user(
++        self, team_id: str, channel_id: str, user_id: str
++    ) -> str | None:
++        return _text(
++            await self._redis.get(f"{PREFIX}open:{team_id}:{channel_id}:{user_id}")
++        )
+ 
+     async def request_stop(self, key: str) -> None:
+         await self._redis.set(f"{PREFIX}stop:{key}", "1", ex=TURN_TTL)
+@@ -153,7 +182,9 @@ class RedisSessionStore:
+         await self._redis.delete(f"{PREFIX}stop:{key}")
+ 
+     def lock(self, key: str) -> Any:
+-        return self._redis.lock(f"{PREFIX}lock:{key}", timeout=LOCK_TTL, blocking_timeout=30)
++        return self._redis.lock(
++            f"{PREFIX}lock:{key}", timeout=LOCK_TTL, blocking_timeout=30
++        )
+ 
+ 
+ def _text(value: Any) -> str | None:
+diff --git a/app/agent/core/slack_ui.py b/app/agent/core/slack_ui.py
+index b41de927..65d1f148 100644
+--- a/app/agent/core/slack_ui.py
++++ b/app/agent/core/slack_ui.py
+@@ -13,7 +13,13 @@ from typing import Any
+ from . import copy
+ from .types import AgentFacts, PendingApproval
+ 
+-TASK_STATUS = {"pending": "pending", "in_progress": "in_progress", "complete": "complete", "waiting": "pending", "error": "error"}
++TASK_STATUS = {
++    "pending": "pending",
++    "in_progress": "in_progress",
++    "complete": "complete",
++    "waiting": "pending",
++    "error": "error",
++}
+ 
+ # action_ids of the app's existing form openers (app/slack/listeners.py). The
+ # hand-off button reuses them so the existing handlers, and their modal
+@@ -28,19 +34,33 @@ FORM_ACTION_IDS: dict[str, str | None] = {
+ }
+ 
+ 
+-def status_payload(facts: AgentFacts, status: str, title: str | None = None) -> dict[str, Any]:
+-    payload: dict[str, Any] = {"channel_id": facts.channel_id, "thread_ts": facts.thread_ts, "status": status}
++def status_payload(
++    facts: AgentFacts, status: str, title: str | None = None
++) -> dict[str, Any]:
++    payload: dict[str, Any] = {
++        "channel_id": facts.channel_id,
++        "thread_ts": facts.thread_ts,
++        "status": status,
++    }
+     if title:
+         payload["title"] = title[:100]
+     return payload
+ 
+ 
+ def rename_payload(facts: AgentFacts, title: str) -> dict[str, Any]:
+-    return {"channel_id": facts.channel_id, "thread_ts": facts.thread_ts, "title": title[:100]}
++    return {
++        "channel_id": facts.channel_id,
++        "thread_ts": facts.thread_ts,
++        "title": title[:100],
++    }
+ 
+ 
+ def stream_start_payload(facts: AgentFacts, text: str) -> dict[str, Any]:
+-    payload: dict[str, Any] = {"channel": facts.channel_id, "thread_ts": facts.thread_ts, "task_display_mode": "plan"}
++    payload: dict[str, Any] = {
++        "channel": facts.channel_id,
++        "thread_ts": facts.thread_ts,
++        "task_display_mode": "plan",
++    }
+     if text:
+         payload["chunks"] = [{"type": "markdown_text", "markdown_text": text}]
+     if facts.surface != "dm":
+@@ -52,24 +72,43 @@ def stream_start_payload(facts: AgentFacts, text: str) -> dict[str, Any]:
+ def task_chunks(plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+     chunks = []
+     for card in plan:
+-        task: dict[str, Any] = {"task_id": card["id"], "title": card["title"], "status": TASK_STATUS[card["state"]]}
++        task: dict[str, Any] = {
++            "task_id": card["id"],
++            "title": card["title"],
++            "status": TASK_STATUS[card["state"]],
++        }
+         if card.get("detail"):
+             task["output"] = {
+                 "type": "rich_text",
+-                "elements": [{"type": "rich_text_section", "elements": [{"type": "text", "text": card["detail"]}]}],
++                "elements": [
++                    {
++                        "type": "rich_text_section",
++                        "elements": [{"type": "text", "text": card["detail"]}],
++                    }
++                ],
+             }
+         chunks.append({"type": "task_update", "task": task})
+     return chunks
+ 
+ 
+-def stream_append_payload(facts: AgentFacts, ts: str, plan: list[dict[str, Any]]) -> dict[str, Any]:
++def stream_append_payload(
++    facts: AgentFacts, ts: str, plan: list[dict[str, Any]]
++) -> dict[str, Any]:
+     return {"channel": facts.channel_id, "ts": ts, "chunks": task_chunks(plan)}
+ 
+ 
+ def stream_stop_payload(
+-    facts: AgentFacts, ts: str, text: str, blocks: list[dict[str, Any]] | None, session_status: str
++    facts: AgentFacts,
++    ts: str,
++    text: str,
++    blocks: list[dict[str, Any]] | None,
++    session_status: str,
+ ) -> dict[str, Any]:
+-    payload: dict[str, Any] = {"channel": facts.channel_id, "ts": ts, "session_status": session_status}
++    payload: dict[str, Any] = {
++        "channel": facts.channel_id,
++        "ts": ts,
++        "session_status": session_status,
++    }
+     if text:
+         payload["chunks"] = [{"type": "markdown_text", "markdown_text": text}]
+     if blocks:
+@@ -77,7 +116,9 @@ def stream_stop_payload(
+     return payload
+ 
+ 
+-def _button(text: str, action_id: str, value: str, primary: bool = False) -> dict[str, Any]:
++def _button(
++    text: str, action_id: str, value: str, primary: bool = False
++) -> dict[str, Any]:
+     button: dict[str, Any] = {
+         "type": "button",
+         "text": {"type": "plain_text", "text": text, "emoji": False},
+@@ -97,7 +138,9 @@ def _context(text: str) -> dict[str, Any]:
+     return {"type": "context", "elements": [{"type": "mrkdwn", "text": text}]}
+ 
+ 
+-def approval_blocks(approval: PendingApproval, approve_label: str = copy.APPROVE) -> list[dict[str, Any]]:
++def approval_blocks(
++    approval: PendingApproval, approve_label: str = copy.APPROVE
++) -> list[dict[str, Any]]:
+     """The button value is the approval id and nothing else: the action that runs is
+     the one stored on the session, not anything a click can carry."""
+     summary = approval.summary
+@@ -123,10 +166,25 @@ def handoff_blocks(
+     blocks = [_section(copy.HANDOFF_INTRO[form])]
+     if action_id is None:
+         return blocks
+-    value: dict[str, Any] = {"files": [{"id": f["id"], "title": f["title"]} for f in files], "channel_id": channel_id}
++    value: dict[str, Any] = {
++        "files": [{"id": f["id"], "title": f["title"]} for f in files],
++        "channel_id": channel_id,
++    }
+     if thread_ts:
+         value["thread_ts"] = thread_ts
+-    blocks.append({"type": "actions", "elements": [_button(copy.HANDOFF_BUTTON[form], action_id, json.dumps(value), primary=True)]})
++    blocks.append(
++        {
++            "type": "actions",
++            "elements": [
++                _button(
++                    copy.HANDOFF_BUTTON[form],
++                    action_id,
++                    json.dumps(value),
++                    primary=True,
++                )
++            ],
++        }
++    )
+     return blocks
+ 
+ 
+@@ -144,7 +202,15 @@ def quick_action_blocks() -> list[dict[str, Any]]:
+ 
+ 
+ def connect_blocks() -> list[dict[str, Any]]:
+-    return [_section(copy.CONNECT_NEEDED), {"type": "actions", "elements": [_button(copy.CONNECT_BUTTON, "agent_connect", "connect", primary=True)]}]
++    return [
++        _section(copy.CONNECT_NEEDED),
++        {
++            "type": "actions",
++            "elements": [
++                _button(copy.CONNECT_BUTTON, "agent_connect", "connect", primary=True)
++            ],
++        },
++    ]
+ 
+ 
+ def suggestion_blocks(suggestion_id: str, language_name: str) -> list[dict[str, Any]]:
+@@ -155,8 +221,15 @@ def suggestion_blocks(suggestion_id: str, language_name: str) -> list[dict[str,
+             "type": "actions",
+             "block_id": f"agent_suggestion:{suggestion_id}",
+             "elements": [
+-                _button(copy.SUGGESTION_ACT.format(language=language_name), "agent_suggestion_act", suggestion_id, primary=True),
+-                _button(copy.SUGGESTION_NOT_NOW, "agent_suggestion_later", suggestion_id),
++                _button(
++                    copy.SUGGESTION_ACT.format(language=language_name),
++                    "agent_suggestion_act",
++                    suggestion_id,
++                    primary=True,
++                ),
++                _button(
++                    copy.SUGGESTION_NOT_NOW, "agent_suggestion_later", suggestion_id
++                ),
+                 _button(copy.SUGGESTION_NEVER, "agent_suggestion_never", suggestion_id),
+             ],
+         },
+@@ -164,18 +237,41 @@ def suggestion_blocks(suggestion_id: str, language_name: str) -> list[dict[str,
+ 
+ 
+ def admin_only_blocks() -> list[dict[str, Any]]:
+-    return [_section(copy.ADMIN_ONLY_SUGGESTIONS), {"type": "actions", "elements": [_button(copy.ASK_AN_ADMIN, "agent_ask_admin", "ask")]}]
++    return [
++        _section(copy.ADMIN_ONLY_SUGGESTIONS),
++        {
++            "type": "actions",
++            "elements": [_button(copy.ASK_AN_ADMIN, "agent_ask_admin", "ask")],
++        },
++    ]
+ 
+ 
+ def digest_blocks(lines: list[str]) -> list[dict[str, Any]]:
+-    return [{"type": "header", "text": {"type": "plain_text", "text": copy.DIGEST_TITLE, "emoji": False}}, _section("\n".join(lines))]
++    return [
++        {
++            "type": "header",
++            "text": {"type": "plain_text", "text": copy.DIGEST_TITLE, "emoji": False},
++        },
++        _section("\n".join(lines)),
++    ]
+ 
+ 
+-def home_blocks(digest: str, muted: list[dict[str, str]], enabled_channels: list[dict[str, str]] | None) -> list[dict[str, Any]]:
++def home_blocks(
++    digest: str,
++    muted: list[dict[str, str]],
++    enabled_channels: list[dict[str, str]] | None,
++) -> list[dict[str, Any]]:
+     """Blocks appended to the app's existing Home tab. `enabled_channels` is None for non-admins."""
+     blocks: list[dict[str, Any]] = [
+         {"type": "divider"},
+-        {"type": "header", "text": {"type": "plain_text", "text": copy.HOME_DIGEST_TITLE, "emoji": False}},
++        {
++            "type": "header",
++            "text": {
++                "type": "plain_text",
++                "text": copy.HOME_DIGEST_TITLE,
++                "emoji": False,
++            },
++        },
+         {
+             "type": "actions",
+             "elements": [
+@@ -190,15 +286,50 @@ def home_blocks(digest: str, muted: list[dict[str, str]], enabled_channels: list
+         _context(copy.HOME_DIGEST_HELPER),
+     ]
+     if muted:
+-        blocks.append({"type": "header", "text": {"type": "plain_text", "text": copy.HOME_MUTED_TITLE, "emoji": False}})
++        blocks.append(
++            {
++                "type": "header",
++                "text": {
++                    "type": "plain_text",
++                    "text": copy.HOME_MUTED_TITLE,
++                    "emoji": False,
++                },
++            }
++        )
+         for m in muted:
+-            blocks.append({**_section(m["label"]), "accessory": _button(copy.HOME_UNMUTE, "agent_home_unmute", m["channel_id"])})
++            blocks.append(
++                {
++                    **_section(m["label"]),
++                    "accessory": _button(
++                        copy.HOME_UNMUTE, "agent_home_unmute", m["channel_id"]
++                    ),
++                }
++            )
+     if enabled_channels:
+-        blocks.append({"type": "header", "text": {"type": "plain_text", "text": copy.HOME_CHANNELS_TITLE, "emoji": False}})
++        blocks.append(
++            {
++                "type": "header",
++                "text": {
++                    "type": "plain_text",
++                    "text": copy.HOME_CHANNELS_TITLE,
++                    "emoji": False,
++                },
++            }
++        )
+         for c in enabled_channels:
+-            blocks.append({**_section(c["label"]), "accessory": _button(copy.HOME_TURN_OFF, "agent_home_channel_off", c["channel_id"])})
++            blocks.append(
++                {
++                    **_section(c["label"]),
++                    "accessory": _button(
++                        copy.HOME_TURN_OFF, "agent_home_channel_off", c["channel_id"]
++                    ),
++                }
++            )
+     return blocks
+ 
+ 
+ def _option(label: str) -> dict[str, Any]:
+-    return {"text": {"type": "plain_text", "text": label, "emoji": False}, "value": label.lower()}
++    return {
++        "text": {"type": "plain_text", "text": label, "emoji": False},
++        "value": label.lower(),
++    }
+diff --git a/app/agent/core/suggestions.py b/app/agent/core/suggestions.py
+new file mode 100644
+index 00000000..b526d384
+--- /dev/null
++++ b/app/agent/core/suggestions.py
+@@ -0,0 +1,136 @@
++"""When Arbitr may speak first in a channel. Rules only: no model is involved.
++
++The five safety rules (spec section 5):
++1. off until someone turns it on for that channel;
++2. private to the person who triggered it;
++3. every suggestion offers "Not now" and "Don't suggest this again";
++4. hard caps on frequency;
++5. no message text reaches a language model to decide. `decide` has no parameter
++   that could carry the text: it receives a detected language code and a length.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++
++from .types import AgentFacts
++
++MIN_LENGTH = 40
++MAJORITY_SHARE = 0.40
++AUTHOR_CHANNEL_WINDOW = 24 * 3600
++CHANNEL_WINDOW = 3600
++CHANNEL_MAX_PER_WINDOW = 3
++NOT_NOW_SECONDS = 24 * 3600
++
++
++@dataclass(frozen=True)
++class MessageSignal:
++    """What the adapter may pass in about a channel message. No text, by design."""
++
++    author_id: str
++    channel_id: str
++    detected_language: str | None
++    length: int
++    is_bot: bool = False
++    is_edit: bool = False
++    is_thread_reply: bool = False
++    is_only_links_or_code: bool = False
++
++
++@dataclass
++class ChannelState:
++    enabled: bool = False
++    member_languages: dict[str, int] = field(
++        default_factory=dict
++    )  # language -> member count
++    recent_suggestions: list[float] = field(default_factory=list)  # timestamps
++
++
++@dataclass
++class AuthorState:
++    muted_forever: bool = False
++    snoozed_until: float = 0.0
++    last_suggested: float = 0.0
++
++
++@dataclass(frozen=True)
++class Suggestion:
++    author_id: str
++    channel_id: str
++    target_language: str
++
++
++def _base(language: str) -> str:
++    return language.split("-")[0].lower()
++
++
++def majority_language(member_languages: dict[str, int]) -> tuple[str, float] | None:
++    total = sum(member_languages.values())
++    if total <= 0:
++        return None
++    merged: dict[str, int] = {}
++    for language, count in member_languages.items():
++        merged[_base(language)] = merged.get(_base(language), 0) + count
++    language, count = max(merged.items(), key=lambda item: item[1])
++    return language, count / total
++
++
++def decide(
++    signal: MessageSignal,
++    channel: ChannelState | None,
++    author: AuthorState | None,
++    now: float,
++) -> Suggestion | None:
++    # Rule 9 of the test list: if state could not be read, stay silent.
++    if channel is None or author is None:
++        return None
++    if not channel.enabled:
++        return None
++    if (
++        signal.is_bot
++        or signal.is_edit
++        or signal.is_thread_reply
++        or signal.is_only_links_or_code
++    ):
++        return None
++    if signal.length < MIN_LENGTH or not signal.detected_language:
++        return None
++    if author.muted_forever or now < author.snoozed_until:
++        return None
++    if author.last_suggested and now - author.last_suggested < AUTHOR_CHANNEL_WINDOW:
++        return None
++    recent = [t for t in channel.recent_suggestions if now - t < CHANNEL_WINDOW]
++    if len(recent) >= CHANNEL_MAX_PER_WINDOW:
++        return None
++    majority = majority_language(channel.member_languages)
++    if majority is None:
++        return None
++    language, share = majority
++    if share < MAJORITY_SHARE or language == _base(signal.detected_language):
++        return None
++    return Suggestion(signal.author_id, signal.channel_id, language)
++
++
++def record_shown(channel: ChannelState, author: AuthorState, now: float) -> None:
++    channel.recent_suggestions = [
++        t for t in channel.recent_suggestions if now - t < CHANNEL_WINDOW
++    ] + [now]
++    author.last_suggested = now
++
++
++def not_now(author: AuthorState, now: float) -> None:
++    author.snoozed_until = now + NOT_NOW_SECONDS
++
++
++def never_again(author: AuthorState) -> None:
++    author.muted_forever = True
++
++
++def unmute(author: AuthorState) -> None:
++    author.muted_forever = False
++    author.snoozed_until = 0.0
++
++
++def can_enable(facts: AgentFacts) -> bool:
++    """IBM workspaces: admins only. Elsewhere: anyone in the channel."""
++    return facts.is_workspace_admin if facts.is_ibm else True
+diff --git a/app/agent/core/tools.py b/app/agent/core/tools.py
+index 237e9ac5..d8542a23 100644
+--- a/app/agent/core/tools.py
++++ b/app/agent/core/tools.py
+@@ -13,18 +13,38 @@ from typing import Any
+ 
+ from .types import ToolHandler, ToolSpec
+ 
+-FORMS = ["document_translation", "media", "quality_evaluation", "human_translation", "new_job", "channel_settings"]
++FORMS = [
++    "document_translation",
++    "media",
++    "quality_evaluation",
++    "human_translation",
++    "new_job",
++    "channel_settings",
++]
+ 
+ 
+ def _schema(properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
+-    return {"type": "object", "properties": properties, "required": required, "additionalProperties": False}
++    return {
++        "type": "object",
++        "properties": properties,
++        "required": required,
++        "additionalProperties": False,
++    }
+ 
+ 
+ _SPECS: list[ToolSpec] = [
+     ToolSpec(
+         "get_job",
+         "Look up one translation job by its reference, for example TJ48213. Use when the person names a job.",
+-        _schema({"job_id": {"type": "string", "description": "Job reference. Digits alone are accepted."}}, ["job_id"]),
++        _schema(
++            {
++                "job_id": {
++                    "type": "string",
++                    "description": "Job reference. Digits alone are accepted.",
++                }
++            },
++            ["job_id"],
++        ),
+         "lookup",
+     ),
+     ToolSpec(
+@@ -32,7 +52,12 @@ _SPECS: list[ToolSpec] = [
+         "List the person's translation jobs. Use for questions such as where is my job, what is waiting on me, "
+         "or what is in progress.",
+         _schema(
+-            {"filter": {"type": "string", "enum": ["open", "waiting_on_me", "delivered", "all"]}},
++            {
++                "filter": {
++                    "type": "string",
++                    "enum": ["open", "waiting_on_me", "delivered", "all"],
++                }
++            },
+             ["filter"],
+         ),
+         "lookup",
+@@ -50,8 +75,14 @@ _SPECS: list[ToolSpec] = [
+         "translate the text yourself and you never see the thread contents.",
+         _schema(
+             {
+-                "target_language": {"type": "string", "description": "Language code such as ja, de, pt-BR."},
+-                "text": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Text the person typed for translation."},
++                "target_language": {
++                    "type": "string",
++                    "description": "Language code such as ja, de, pt-BR.",
++                },
++                "text": {
++                    "anyOf": [{"type": "string"}, {"type": "null"}],
++                    "description": "Text the person typed for translation.",
++                },
+                 "use_current_thread": {"type": "boolean"},
+             },
+             ["target_language", "text", "use_current_thread"],
+@@ -80,7 +111,10 @@ _SPECS: list[ToolSpec] = [
+         _schema(
+             {
+                 "target_language": {"type": "string"},
+-                "message_ts": {"type": "string", "description": "Timestamp of the channel message to translate."},
++                "message_ts": {
++                    "type": "string",
++                    "description": "Timestamp of the channel message to translate.",
++                },
+             },
+             ["target_language", "message_ts"],
+         ),
+@@ -99,14 +133,25 @@ _SPECS: list[ToolSpec] = [
+     ToolSpec(
+         "set_digest",
+         "Turn the person's job digest on or off.",
+-        _schema({"frequency": {"type": "string", "enum": ["off", "daily", "weekly"]}}, ["frequency"]),
++        _schema(
++            {"frequency": {"type": "string", "enum": ["off", "daily", "weekly"]}},
++            ["frequency"],
++        ),
+         "lookup",
+     ),
+     ToolSpec(
+         "explain",
+         "Fetch the app's approved help text on a topic. Use it before answering questions about what Arbitr "
+         "can do or how to get started.",
+-        _schema({"topic": {"type": "string", "enum": ["capabilities", "getting_started", "pricing", "privacy"]}}, ["topic"]),
++        _schema(
++            {
++                "topic": {
++                    "type": "string",
++                    "enum": ["capabilities", "getting_started", "pricing", "privacy"],
++                }
++            },
++            ["topic"],
++        ),
+         "lookup",
+     ),
+ ]
+@@ -122,11 +167,22 @@ class ToolRegistry:
+ 
+     def specs_for(self, can_see_quotes: bool) -> list[ToolSpec]:
+         """Tools offered to the model. A person who cannot see quotes is never offered the quote tool."""
+-        return [s for s in self._specs.values() if can_see_quotes or s.name != "request_document_quote"]
++        return [
++            s
++            for s in self._specs.values()
++            if can_see_quotes or s.name != "request_document_quote"
++        ]
+ 
+-    def as_anthropic_tools(self, specs: list[ToolSpec] | None = None) -> list[dict[str, Any]]:
++    def as_anthropic_tools(
++        self, specs: list[ToolSpec] | None = None
++    ) -> list[dict[str, Any]]:
+         return [
+-            {"name": s.name, "description": s.description, "input_schema": s.input_schema, "strict": True}
++            {
++                "name": s.name,
++                "description": s.description,
++                "input_schema": s.input_schema,
++                "strict": True,
++            }
+             for s in (specs if specs is not None else self.specs())
+         ]
+ 
+diff --git a/app/agent/core/types.py b/app/agent/core/types.py
+index 52439626..9d618009 100644
+--- a/app/agent/core/types.py
++++ b/app/agent/core/types.py
+@@ -100,7 +100,9 @@ class Session:
+     def from_json(cls, data: dict[str, Any]) -> "Session":
+         data = dict(data)
+         data["facts"] = AgentFacts(**data["facts"])
+-        data["pending"] = {k: PendingApproval(**v) for k, v in data.get("pending", {}).items()}
++        data["pending"] = {
++            k: PendingApproval(**v) for k, v in data.get("pending", {}).items()
++        }
+         return cls(**data)
+ 
+ 
+diff --git a/app/agent/core/voice.py b/app/agent/core/voice.py
+index 18b11819..0bca224f 100644
+--- a/app/agent/core/voice.py
++++ b/app/agent/core/voice.py
+@@ -35,10 +35,15 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
+             re.I,
+         ),
+     ),
+-    ("off-limits-claim", re.compile(r"\b(trust scor(e|ing)|consensus voting|glass box)\b", re.I)),
++    (
++        "off-limits-claim",
++        re.compile(r"\b(trust scor(e|ing)|consensus voting|glass box)\b", re.I),
++    ),
+     (
+         "retired-name",
+-        re.compile(r"\b(Straker\.AI|NotVerify|LanguageCloud|RAY Translate|Connect to Verify)\b"),
++        re.compile(
++            r"\b(Straker\.AI|NotVerify|LanguageCloud|RAY Translate|Connect to Verify)\b"
++        ),
+     ),
+ ]
+ 
+diff --git a/tests/agent/fakes.py b/tests/agent/fakes.py
+index 31d5c6cc..352170c4 100644
+--- a/tests/agent/fakes.py
++++ b/tests/agent/fakes.py
+@@ -21,9 +21,18 @@ class FixedClock:
+ 
+ def make_facts(**overrides: Any) -> AgentFacts:
+     base: dict[str, Any] = dict(
+-        user_id="U_MIKA", team_id="T1", channel_id="D1", enterprise_id=None, thread_ts="111.222",
+-        locale="en-US", is_connected=True, can_see_quotes=True, is_ibm=False,
+-        is_workspace_admin=False, surface="dm", display_name="Mika Kato",
++        user_id="U_MIKA",
++        team_id="T1",
++        channel_id="D1",
++        enterprise_id=None,
++        thread_ts="111.222",
++        locale="en-US",
++        is_connected=True,
++        can_see_quotes=True,
++        is_ibm=False,
++        is_workspace_admin=False,
++        surface="dm",
++        display_name="Mika Kato",
+     )
+     base.update(overrides)
+     return AgentFacts(**base)
+@@ -56,10 +65,22 @@ class RecordingSlack:
+         return f"ts-{self._ts}"
+ 
+     async def stream_tasks(self, facts, ts, plan):
+-        self.calls.append(("stream_tasks", {"ts": ts, "plan": [dict(card) for card in plan]}))
++        self.calls.append(
++            ("stream_tasks", {"ts": ts, "plan": [dict(card) for card in plan]})
++        )
+ 
+     async def stream_stop(self, facts, ts, text, blocks, session_status):
+-        self.calls.append(("stream_stop", {"ts": ts, "text": text, "blocks": blocks, "session_status": session_status}))
++        self.calls.append(
++            (
++                "stream_stop",
++                {
++                    "ts": ts,
++                    "text": text,
++                    "blocks": blocks,
++                    "session_status": session_status,
++                },
++            )
++        )
+ 
+     async def post(self, facts, text, blocks=None):
+         self.calls.append(("post", {"text": text, "blocks": blocks}))
+@@ -78,7 +99,9 @@ class ScriptedLlm:
+     async def step(self, system, tools, messages):
+         import copy as _copy
+ 
+-        self.requests.append({"system": system, "tools": tools, "messages": _copy.deepcopy(messages)})
++        self.requests.append(
++            {"system": system, "tools": tools, "messages": _copy.deepcopy(messages)}
++        )
+         if not self._steps:
+             raise AssertionError("ScriptedLlm ran out of steps")
+         step = self._steps.pop(0)
+diff --git a/tests/agent/test_approvals.py b/tests/agent/test_approvals.py
+index 4d8d671c..813effa9 100644
+--- a/tests/agent/test_approvals.py
++++ b/tests/agent/test_approvals.py
+@@ -11,8 +11,12 @@ def gate(clock=None, **kwargs):
+ 
+ 
+ def create(g, session, **overrides):
+-    args = dict(tool="post_translation_publicly", tool_input={"target_language": "ja"},
+-                requested_by="U_MIKA", summary="Post in Japanese")
++    args = dict(
++        tool="post_translation_publicly",
++        tool_input={"target_language": "ja"},
++        requested_by="U_MIKA",
++        summary="Post in Japanese",
++    )
+     args.update(overrides)
+     return g.create(session, **args)
+ 
+@@ -99,7 +103,9 @@ def test_consume_returns_the_stored_input_not_what_the_click_carried():
+     original = {"target_language": "ja"}
+     approval = create(g, session, tool_input=original)
+     original["target_language"] = "tampered"
+-    assert g.consume(session, approval.id, "U_MIKA").tool_input == {"target_language": "ja"}
++    assert g.consume(session, approval.id, "U_MIKA").tool_input == {
++        "target_language": "ja"
++    }
+ 
+ 
+ def test_lookup_tools_cannot_get_approvals():
+@@ -108,7 +114,9 @@ def test_lookup_tools_cannot_get_approvals():
+ 
+ 
+ def test_hidden_amounts_never_leak():
+-    approval = create(gate(), make_session(), show_amount=False, amount_text="USD 12.00")
++    approval = create(
++        gate(), make_session(), show_amount=False, amount_text="USD 12.00"
++    )
+     assert approval.amount_text is None
+ 
+ 
+diff --git a/tests/agent/test_copy.py b/tests/agent/test_copy.py
+index cacfa523..cca3597d 100644
+--- a/tests/agent/test_copy.py
++++ b/tests/agent/test_copy.py
+@@ -14,7 +14,10 @@ def test_every_fixed_string_passes_the_voice_rules():
+ 
+ 
+ def test_disclaimer_matches_the_poc():
+-    assert copy.DISCLAIMER == "AI output can be inaccurate. Human review is available on any job."
++    assert (
++        copy.DISCLAIMER
++        == "AI output can be inaccurate. Human review is available on any job."
++    )
+ 
+ 
+ def _sentences(text):
+@@ -42,7 +45,9 @@ def test_refusals_never_apologise():
+ 
+ def test_ibm_safe_strings_never_mention_connection_or_money():
+     for text in copy.IBM_SAFE:
+-        assert not re.search(r"\b(connect|top up|purchase|balance|buy)\b", text, re.I), text
++        assert not re.search(
++            r"\b(connect|top up|purchase|balance|buy)\b", text, re.I
++        ), text
+ 
+ 
+ def test_every_form_has_an_intro_and_a_button():
+@@ -51,4 +56,10 @@ def test_every_form_has_an_intro_and_a_button():
+ 
+ 
+ def test_every_approval_error_reason_has_copy():
+-    assert set(copy.APPROVAL_ERRORS) == {"wrong_user", "expired", "unknown", "already_used", "stopped"}
++    assert set(copy.APPROVAL_ERRORS) == {
++        "wrong_user",
++        "expired",
++        "unknown",
++        "already_used",
++        "stopped",
++    }
+diff --git a/tests/agent/test_core_isolation.py b/tests/agent/test_core_isolation.py
+index 02413b39..860e942f 100644
+--- a/tests/agent/test_core_isolation.py
++++ b/tests/agent/test_core_isolation.py
+@@ -6,7 +6,14 @@ import pathlib
+ 
+ CORE = pathlib.Path(__file__).parents[2] / "app" / "agent" / "core"
+ ALLOWED_PREFIX = "app.agent.core"
+-PRIVATE = ("straker_utils", "straker_auth", "ray_sdk", "ray_logger", "buglog", "ibm_watson")
++PRIVATE = (
++    "straker_utils",
++    "straker_auth",
++    "ray_sdk",
++    "ray_logger",
++    "buglog",
++    "ibm_watson",
++)
+ 
+ 
+ def _imports(path: pathlib.Path):
+@@ -25,7 +32,8 @@ def test_core_never_imports_the_rest_of_the_app():
+         f"{py.name}: {name}"
+         for py in CORE.rglob("*.py")
+         for name in _imports(py)
+-        if name == "app" or (name.startswith("app.") and not name.startswith(ALLOWED_PREFIX))
++        if name == "app"
++        or (name.startswith("app.") and not name.startswith(ALLOWED_PREFIX))
+     ]
+     assert offenders == []
+ 
+diff --git a/tests/agent/test_followups.py b/tests/agent/test_followups.py
+new file mode 100644
+index 00000000..9c6fb33d
+--- /dev/null
++++ b/tests/agent/test_followups.py
+@@ -0,0 +1,70 @@
++from datetime import datetime, timedelta, timezone
++
++from app.agent.core import copy
++from app.agent.core.followups import (
++    JobView,
++    build_digest,
++    is_quiet_hours,
++    plan_followups,
++)
++
++NOON = datetime(2026, 9, 21, 12, 0, tzinfo=timezone.utc)
++
++
++def job(state, hours_ago, job_id="TJ48190", name="Returns-policy.docx"):
++    return JobView(job_id, name, state, NOON - timedelta(hours=hours_ago))
++
++
++def test_quote_waiting_two_days_gets_one_reminder_only():
++    jobs = [job("quote_waiting", 49)]
++    first = plan_followups(jobs, set(), NOON)
++    assert [f.kind for f in first] == ["quote_waiting"]
++    assert (
++        "Returns-policy.docx" in first[0].text
++        and "will not remind you again" in first[0].text
++    )
++    assert plan_followups(jobs, {"TJ48190:quote_waiting"}, NOON) == []
++
++
++def test_quote_waiting_less_than_two_days_is_left_alone():
++    assert plan_followups([job("quote_waiting", 47)], set(), NOON) == []
++
++
++def test_delivery_gets_one_note_with_a_next_step():
++    first = plan_followups([job("delivered", 1)], set(), NOON)
++    assert first[0].text == copy.FOLLOWUP_DELIVERED.format(name="Returns-policy.docx")
++    assert plan_followups([job("delivered", 1)], {"TJ48190:delivered"}, NOON) == []
++
++
++def test_nothing_at_night_in_the_persons_timezone():
++    tokyo = 9 * 3600
++    assert is_quiet_hours(NOON, tokyo) is True  # 21:00 in Tokyo
++    assert (
++        plan_followups([job("delivered", 1)], set(), NOON, utc_offset_seconds=tokyo)
++        == []
++    )
++    assert is_quiet_hours(NOON, 0) is False
++
++
++def test_digest_only_for_people_who_opted_in():
++    assert build_digest([job("delivered", 1)], opted_in=False) is None
++
++
++def test_empty_digest_is_not_sent():
++    assert build_digest([], opted_in=True) is None
++
++
++def test_digest_lines_and_optional_team_line():
++    jobs = [
++        job("delivered", 1, "TJ1"),
++        job("delivered", 2, "TJ2"),
++        job("quote_waiting", 3, "TJ3"),
++        job("in_progress", 4, "TJ4"),
++    ]
++    assert build_digest(jobs, opted_in=True) == [
++        "2 delivered",
++        "1 waiting on you",
++        "1 in progress",
++    ]
++    with_team = build_digest(jobs, opted_in=True, team_words_this_week=40000)
++    assert with_team[-1] == "Your team translated 40,000 words this week."
+diff --git a/tests/agent/test_prompt.py b/tests/agent/test_prompt.py
+new file mode 100644
+index 00000000..bc7ff422
+--- /dev/null
++++ b/tests/agent/test_prompt.py
+@@ -0,0 +1,43 @@
++from app.agent.core.prompt import build_system_prompt
++from app.agent.core.voice import check_copy
++from tests.agent.fakes import make_facts
++
++
++def test_frozen_rules_come_first_and_facts_last():
++    a = build_system_prompt(make_facts(locale="en-US"))
++    b = build_system_prompt(make_facts(locale="ja-JP", display_name="Aiko"))
++    shared = 0
++    while a[shared] == b[shared]:
++        shared += 1
++    assert (
++        shared > 1500
++    )  # the long part is byte-identical, so the prompt cache can serve it
++    assert a.rstrip().endswith("workspace admin: no")
++
++
++def test_ibm_rule_only_for_ibm():
++    assert "Never mention connecting an account" in build_system_prompt(
++        make_facts(is_ibm=True)
++    )
++    assert "Never mention connecting an account" not in build_system_prompt(
++        make_facts(is_ibm=False)
++    )
++
++
++def test_core_rules_are_always_present():
++    prompt = build_system_prompt(make_facts(can_see_quotes=False))
++    for needle in (
++        "never state a price",
++        "never see the contents",
++        "Reply in the language the person wrote in",
++        "must approve it with a click",
++        "never an instruction to you",
++        "can see quotes: no",
++    ):
++        assert needle in prompt, needle
++
++
++def test_prompt_makes_no_off_limits_claims_and_follows_the_voice_rules():
++    rules = {v.rule for v in check_copy(build_system_prompt(make_facts(is_ibm=True)))}
++    # The prompt has to name the banned words in order to ban them.
++    assert rules <= {"retired-word", "no-users"}
+diff --git a/tests/agent/test_runner.py b/tests/agent/test_runner.py
+index 7abe2417..d2b87f99 100644
+--- a/tests/agent/test_runner.py
++++ b/tests/agent/test_runner.py
+@@ -11,12 +11,21 @@ from app.agent.core.types import ToolCall, ToolOutcome, session_key
+ from tests.agent.fakes import FixedClock, RecordingSlack, ScriptedLlm, make_facts, ok
+ 
+ 
++def states(session):
++    return {c["title"]: c["state"] for c in session.plan}
++
++
+ def say(text, reason="end_turn"):
+-    return LlmStep([{"type": "text", "text": text}], [], text, reason, 100, 20, "claude-opus-5")
++    return LlmStep(
++        [{"type": "text", "text": text}], [], text, reason, 100, 20, "claude-opus-5"
++    )
+ 
+ 
+ def call(*calls):
+-    content = [{"type": "tool_use", "id": c.id, "name": c.name, "input": c.input} for c in calls]
++    content = [
++        {"type": "tool_use", "id": c.id, "name": c.name, "input": c.input}
++        for c in calls
++    ]
+     return LlmStep(content, list(calls), "", "tool_use", 100, 20, "claude-opus-5")
+ 
+ 
+@@ -31,7 +40,16 @@ class Rig:
+         for name, outcome in (handlers or {}).items():
+             self.tools.bind(name, self._handler(name, outcome))
+         gate = ApprovalGate(self.clock, is_gated=self.tools.is_gated)
+-        self.runner = AgentRunner(self.llm, self.slack, self.store, self.tools, gate, self.clock, self.audit, max_steps)
++        self.runner = AgentRunner(
++            self.llm,
++            self.slack,
++            self.store,
++            self.tools,
++            gate,
++            self.clock,
++            self.audit,
++            max_steps,
++        )
+ 
+     def _handler(self, name, outcome):
+         async def handler(facts, tool_input):
+@@ -39,6 +57,7 @@ class Rig:
+             if isinstance(outcome, Exception):
+                 raise outcome
+             return outcome
++
+         return handler
+ 
+     async def session(self):
+@@ -48,7 +67,11 @@ class Rig:
+         await self.runner.handle_message(self.facts, text, event_id, files)
+ 
+ 
+-POST = ToolCall("tu_post", "post_translation_publicly", {"target_language": "ja", "message_ts": "5.6"})
++POST = ToolCall(
++    "tu_post",
++    "post_translation_publicly",
++    {"target_language": "ja", "message_ts": "5.6"},
++)
+ 
+ 
+ @pytest.mark.asyncio
+@@ -58,7 +81,10 @@ async def test_plain_answer_streams_with_disclaimer_and_ends_active():
+     assert rig.slack.names() == ["set_status", "stream_start", "stream_stop"]
+     assert rig.slack.calls[0][1] == {"status": "processing", "title": "Where's my job?"}
+     stop = rig.slack.calls[-1][1]
+-    assert stop["text"].startswith("You have two open jobs.") and copy.DISCLAIMER in stop["text"]
++    assert (
++        stop["text"].startswith("You have two open jobs.")
++        and copy.DISCLAIMER in stop["text"]
++    )
+     assert stop["session_status"] == "active"
+     assert [t.outcome for t in rig.audit.turns] == ["success"]
+     assert rig.audit.turns[0].input_tokens == 100
+@@ -66,21 +92,47 @@ async def test_plain_answer_streams_with_disclaimer_and_ends_active():
+ 
+ @pytest.mark.asyncio
+ async def test_lookup_runs_immediately_and_result_returns_to_the_model():
+-    rig = Rig([call(ToolCall("tu_1", "list_jobs", {"filter": "open"})), say("Two jobs.")],
+-              handlers={"list_jobs": ok('[{"id": "TJ48213"}]', card_detail="2 found")})
++    rig = Rig(
++        [call(ToolCall("tu_1", "list_jobs", {"filter": "open"})), say("Two jobs.")],
++        handlers={"list_jobs": ok('[{"id": "TJ48213"}]', card_detail="2 found")},
++    )
+     await rig.say()
+     assert rig.ran == [("list_jobs", {"filter": "open"})]
+     second_request = rig.llm.requests[1]["messages"]
+-    assert second_request[-1] == {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu_1", "content": '[{"id": "TJ48213"}]'}]}
++    assert second_request[-1] == {
++        "role": "user",
++        "content": [
++            {
++                "type": "tool_result",
++                "tool_use_id": "tu_1",
++                "content": '[{"id": "TJ48213"}]',
++            }
++        ],
++    }
+     plan = (await rig.session()).plan
+-    assert plan == [{"id": "c1", "title": copy.CARD_LOOKUP_JOBS, "state": "complete", "detail": "2 found"}]
++    assert plan == [
++        {
++            "id": "c1",
++            "title": copy.CARD_LOOKUP_JOBS,
++            "state": "complete",
++            "detail": "2 found",
++        }
++    ]
+     assert rig.audit.turns[0].tools_called == ["list_jobs"]
+ 
+ 
+ @pytest.mark.asyncio
+ async def test_two_lookups_in_one_step_return_in_one_message():
+-    rig = Rig([call(ToolCall("a", "list_jobs", {"filter": "open"}), ToolCall("b", "account_status", {})), say("Done.")],
+-              handlers={"list_jobs": ok("[]"), "account_status": ok("ready")})
++    rig = Rig(
++        [
++            call(
++                ToolCall("a", "list_jobs", {"filter": "open"}),
++                ToolCall("b", "account_status", {}),
++            ),
++            say("Done."),
++        ],
++        handlers={"list_jobs": ok("[]"), "account_status": ok("ready")},
++    )
+     await rig.say()
+     results = rig.llm.requests[1]["messages"][-1]["content"]
+     assert [r["tool_use_id"] for r in results] == ["a", "b"]
+@@ -88,7 +140,10 @@ async def test_two_lookups_in_one_step_return_in_one_message():
+ 
+ @pytest.mark.asyncio
+ async def test_gated_tool_does_not_run_and_waits_for_a_click():
+-    rig = Rig([call(POST), say("The post is ready for your approval.")], handlers={"post_translation_publicly": ok("posted")})
++    rig = Rig(
++        [call(POST), say("The post is ready for your approval.")],
++        handlers={"post_translation_publicly": ok("posted")},
++    )
+     await rig.say("Post this in Japanese")
+     assert rig.ran == []
+     session = await rig.session()
+@@ -97,46 +152,74 @@ async def test_gated_tool_does_not_run_and_waits_for_a_click():
+     assert told == copy.WAITING_FOR_APPROVAL
+     stop = rig.slack.calls[-1][1]
+     assert stop["session_status"] == "suspended"
+-    assert [b["action_id"] for b in stop["blocks"][1]["elements"]] == ["agent_approve", "agent_decline"]
++    assert [b["action_id"] for b in stop["blocks"][1]["elements"]] == [
++        "agent_approve",
++        "agent_decline",
++    ]
+ 
+ 
+ @pytest.mark.asyncio
+ async def test_model_claiming_it_posted_does_not_make_it_so():
+-    rig = Rig([call(POST), say("Done, I have posted it.")], handlers={"post_translation_publicly": ok("posted")})
++    rig = Rig(
++        [call(POST), say("Done, I have posted it.")],
++        handlers={"post_translation_publicly": ok("posted")},
++    )
+     await rig.say("Post this in Japanese")
+     assert rig.ran == []
+ 
+ 
+ @pytest.mark.asyncio
+ async def test_valid_click_runs_the_stored_action_once_and_resumes():
+-    rig = Rig([call(POST), say("Waiting on you."), say("Arbitr has posted the Japanese version.")],
+-              handlers={"post_translation_publicly": ok("posted", card_detail="Japanese")})
++    rig = Rig(
++        [
++            call(POST),
++            say("Waiting on you."),
++            say("Arbitr has posted the Japanese version."),
++        ],
++        handlers={"post_translation_publicly": ok("posted", card_detail="Japanese")},
++    )
+     await rig.say("Post this in Japanese")
+     approval_id = next(iter((await rig.session()).pending))
+     await rig.runner.handle_approval(rig.facts, approval_id, "U_MIKA", approved=True)
+-    assert rig.ran == [("post_translation_publicly", {"target_language": "ja", "message_ts": "5.6"})]
++    assert rig.ran == [
++        ("post_translation_publicly", {"target_language": "ja", "message_ts": "5.6"})
++    ]
+     session = await rig.session()
+     assert session.pending == {} and session.status == "active"
+     assert {c["title"]: c["state"] for c in session.plan}[copy.CARD_POST] == "complete"
+     await rig.runner.handle_approval(rig.facts, approval_id, "U_MIKA", approved=True)
+     assert len(rig.ran) == 1
+-    assert rig.slack.calls[-1] == ("post_private", {"text": copy.APPROVAL_ERRORS["already_used"], "blocks": None})
++    assert rig.slack.calls[-1] == (
++        "post_private",
++        {"text": copy.APPROVAL_ERRORS["already_used"], "blocks": None},
++    )
+ 
+ 
+ @pytest.mark.asyncio
+ async def test_wrong_person_gets_private_copy_and_nothing_runs():
+-    rig = Rig([call(POST), say("Waiting on you.")], handlers={"post_translation_publicly": ok("posted")})
++    rig = Rig(
++        [call(POST), say("Waiting on you.")],
++        handlers={"post_translation_publicly": ok("posted")},
++    )
+     await rig.say("Post this in Japanese")
+     approval_id = next(iter((await rig.session()).pending))
+-    await rig.runner.handle_approval(rig.facts, approval_id, "U_SOMEONE_ELSE", approved=True)
++    await rig.runner.handle_approval(
++        rig.facts, approval_id, "U_SOMEONE_ELSE", approved=True
++    )
+     assert rig.ran == []
+-    assert rig.slack.calls[-1] == ("post_private", {"text": copy.APPROVAL_ERRORS["wrong_user"], "blocks": None})
++    assert rig.slack.calls[-1] == (
++        "post_private",
++        {"text": copy.APPROVAL_ERRORS["wrong_user"], "blocks": None},
++    )
+     assert len((await rig.session()).pending) == 1
+ 
+ 
+ @pytest.mark.asyncio
+ async def test_decline_runs_nothing_and_says_so():
+-    rig = Rig([call(POST), say("Waiting on you.")], handlers={"post_translation_publicly": ok("posted")})
++    rig = Rig(
++        [call(POST), say("Waiting on you.")],
++        handlers={"post_translation_publicly": ok("posted")},
++    )
+     await rig.say("Post this in Japanese")
+     approval_id = next(iter((await rig.session()).pending))
+     await rig.runner.handle_approval(rig.facts, approval_id, "U_MIKA", approved=False)
+@@ -160,7 +243,11 @@ async def test_model_down_gives_fixed_copy_and_quick_actions():
+     await rig.say()
+     name, args = rig.slack.calls[1]
+     assert name == "post" and args["text"] == copy.FALLBACK_MODEL_DOWN
+-    assert [b["action_id"] for b in args["blocks"][0]["elements"]] == ["agent_quick_jobs", "agent_quick_new", "agent_quick_help"]
++    assert [b["action_id"] for b in args["blocks"][0]["elements"]] == [
++        "agent_quick_jobs",
++        "agent_quick_new",
++        "agent_quick_help",
++    ]
+     assert rig.slack.calls[-1] == ("set_status", {"status": "active", "title": None})
+     turn = rig.audit.turns[0]
+     assert (turn.outcome, turn.error_type) == ("failure", "llm_error")
+@@ -183,7 +270,10 @@ async def test_tool_error_is_reported_to_the_model_once_then_fixed_copy():
+ 
+ @pytest.mark.asyncio
+ async def test_stop_cancels_approvals_and_old_clicks_are_refused():
+-    rig = Rig([call(POST), say("Waiting on you.")], handlers={"post_translation_publicly": ok("posted")})
++    rig = Rig(
++        [call(POST), say("Waiting on you.")],
++        handlers={"post_translation_publicly": ok("posted")},
++    )
+     await rig.say("Post this in Japanese")
+     approval_id = next(iter((await rig.session()).pending))
+     await rig.runner.handle_stop(rig.facts)
+@@ -196,7 +286,10 @@ async def test_stop_cancels_approvals_and_old_clicks_are_refused():
+ 
+ @pytest.mark.asyncio
+ async def test_a_stop_request_halts_a_running_turn_between_steps():
+-    rig = Rig([call(ToolCall("t1", "list_jobs", {"filter": "open"})), say("never reached")], handlers={"list_jobs": ok("[]")})
++    rig = Rig(
++        [call(ToolCall("t1", "list_jobs", {"filter": "open"})), say("never reached")],
++        handlers={"list_jobs": ok("[]")},
++    )
+ 
+     original = rig.tools.handler_for("list_jobs")
+ 
+@@ -222,14 +315,19 @@ async def test_the_loop_is_bounded():
+ 
+ @pytest.mark.asyncio
+ async def test_ibm_replies_never_mention_connection_or_money():
+-    rig = Rig([say("First, connect your account, then top up your balance.")], facts=make_facts(is_ibm=True))
++    rig = Rig(
++        [say("First, connect your account, then top up your balance.")],
++        facts=make_facts(is_ibm=True),
++    )
+     await rig.say("How do I start?")
+     assert rig.slack.calls[-1][1]["text"] == copy.HELP_IBM_GENERIC
+     assert rig.audit.turns[0].outcome == "partial"
+ 
+ 
+ @pytest.mark.asyncio
+-@pytest.mark.parametrize("leak", ["That will be USD 12.00.", "About $12 in total.", "It costs 120 credits."])
++@pytest.mark.parametrize(
++    "leak", ["That will be USD 12.00.", "About $12 in total.", "It costs 120 credits."]
++)
+ async def test_people_who_cannot_see_quotes_never_get_an_amount(leak):
+     rig = Rig([say(leak)], facts=make_facts(can_see_quotes=False))
+     await rig.say("How much?")
+@@ -238,11 +336,20 @@ async def test_people_who_cannot_see_quotes_never_get_an_amount(leak):
+ 
+ @pytest.mark.asyncio
+ async def test_quote_tool_is_neither_offered_nor_runnable_without_quote_rights():
+-    quote = ToolCall("t1", "request_document_quote", {"target_languages": ["ja"], "source_language": None})
+-    rig = Rig([call(quote), say("Use the form.")], handlers={"request_document_quote": ok("requested")},
+-              facts=make_facts(can_see_quotes=False))
++    quote = ToolCall(
++        "t1",
++        "request_document_quote",
++        {"target_languages": ["ja"], "source_language": None},
++    )
++    rig = Rig(
++        [call(quote), say("Use the form.")],
++        handlers={"request_document_quote": ok("requested")},
++        facts=make_facts(can_see_quotes=False),
++    )
+     await rig.say("Translate this deck")
+-    assert "request_document_quote" not in {t.name for t in rig.llm.requests[0]["tools"]}
++    assert "request_document_quote" not in {
++        t.name for t in rig.llm.requests[0]["tools"]
++    }
+     assert rig.ran == []
+     assert rig.llm.requests[1]["messages"][-1]["content"][0]["is_error"] is True
+ 
+@@ -257,8 +364,19 @@ async def test_unknown_tool_is_an_error_result_not_a_crash():
+ @pytest.mark.asyncio
+ async def test_files_reach_the_model_as_metadata_only():
+     rig = Rig([say("Noted.")])
+-    await rig.say("Translate this", files=[{"id": "F1", "title": "Q3-launch.pptx", "filetype": "pptx", "size": 2_200_000,
+-                                           "url_private": "https://files.slack.com/secret", "preview": "CONFIDENTIAL"}])
++    await rig.say(
++        "Translate this",
++        files=[
++            {
++                "id": "F1",
++                "title": "Q3-launch.pptx",
++                "filetype": "pptx",
++                "size": 2_200_000,
++                "url_private": "https://files.slack.com/secret",
++                "preview": "CONFIDENTIAL",
++            }
++        ],
++    )
+     sent = rig.llm.requests[0]["messages"][0]["content"]
+     assert "Q3-launch.pptx (pptx, 2.1 MB)" in sent
+     assert "secret" not in sent and "CONFIDENTIAL" not in sent
+@@ -266,21 +384,38 @@ async def test_files_reach_the_model_as_metadata_only():
+ 
+ @pytest.mark.asyncio
+ async def test_backend_events_update_cards_and_status_without_calling_the_model():
+-    quote = ToolCall("t1", "request_document_quote", {"target_languages": ["ja"], "source_language": None})
+-    rig = Rig([call(quote), say("Arbitr has requested the quote.")],
+-              handlers={"request_document_quote": ToolOutcome("requested", card_detail=copy.CARD_DETAIL_REQUESTED, waits_for_backend=True)})
++    quote = ToolCall(
++        "t1",
++        "request_document_quote",
++        {"target_languages": ["ja"], "source_language": None},
++    )
++    rig = Rig(
++        [call(quote), say("Arbitr has requested the quote.")],
++        handlers={
++            "request_document_quote": ToolOutcome(
++                "requested",
++                card_detail=copy.CARD_DETAIL_REQUESTED,
++                waits_for_backend=True,
++            )
++        },
++    )
+     await rig.say("Translate this deck")
+     key = session_key(rig.facts)
+-    states = lambda s: {c["title"]: c["state"] for c in s.plan}
+     assert states(await rig.session())[copy.CARD_PRICE] == "in_progress"
+     await rig.runner.handle_backend_event(key, "quote_ready")
+     session = await rig.session()
+-    assert states(session)[copy.CARD_PRICE] == "complete" and session.status == "suspended"
++    assert (
++        states(session)[copy.CARD_PRICE] == "complete" and session.status == "suspended"
++    )
+     await rig.runner.handle_backend_event(key, "delivered")
+     session = await rig.session()
+-    assert states(session)[copy.CARD_DELIVER] == "complete" and session.status == "active"
++    assert (
++        states(session)[copy.CARD_DELIVER] == "complete" and session.status == "active"
++    )
+     assert len(rig.llm.requests) == 2
+-    await rig.runner.handle_backend_event("T1:D1:missing", "delivered")  # unknown session: no crash
++    await rig.runner.handle_backend_event(
++        "T1:D1:missing", "delivered"
++    )  # unknown session: no crash
+ 
+ 
+ @pytest.mark.asyncio
+@@ -293,7 +428,10 @@ async def test_voice_violations_are_recorded_not_blocked():
+ 
+ @pytest.mark.asyncio
+ async def test_long_turns_resend_processing_before_the_hour():
+-    rig = Rig([call(ToolCall("t1", "account_status", {})), say("Ready.")], handlers={"account_status": ok("ready")})
++    rig = Rig(
++        [call(ToolCall("t1", "account_status", {})), say("Ready.")],
++        handlers={"account_status": ok("ready")},
++    )
+     original = rig.tools.handler_for("account_status")
+ 
+     async def slow(facts, tool_input):
+@@ -302,7 +440,9 @@ async def test_long_turns_resend_processing_before_the_hour():
+ 
+     rig.tools.bind("account_status", slow)
+     await rig.say()
+-    statuses = [args["status"] for name, args in rig.slack.calls if name == "set_status"]
++    statuses = [
++        args["status"] for name, args in rig.slack.calls if name == "set_status"
++    ]
+     assert statuses == ["processing", "processing"]
+ 
+ 
+diff --git a/tests/agent/test_session.py b/tests/agent/test_session.py
+index f1a36663..404f2950 100644
+--- a/tests/agent/test_session.py
++++ b/tests/agent/test_session.py
+@@ -4,7 +4,11 @@ import fakeredis.aioredis
+ import pytest
+ 
+ from app.agent.core.session import (
+-    PREFIX, SESSION_TTL, InMemorySessionStore, RedisSessionStore, trim_history,
++    PREFIX,
++    SESSION_TTL,
++    InMemorySessionStore,
++    RedisSessionStore,
++    trim_history,
+ )
+ from app.agent.core.types import PendingApproval
+ from tests.agent.fakes import make_facts, make_session
+@@ -21,18 +25,46 @@ def full_session():
+     session = make_session(title="Q3 deck", status="suspended")
+     session.messages = [
+         {"role": "user", "content": "Translate this"},
+-        {"role": "assistant", "content": [
+-            {"type": "thinking", "thinking": "", "signature": "abc"},
+-            {"type": "tool_use", "id": "tu_1", "name": "get_job", "input": {"job_id": "TJ1"}},
+-        ]},
+-        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu_1", "content": "{}"}]},
++        {
++            "role": "assistant",
++            "content": [
++                {"type": "thinking", "thinking": "", "signature": "abc"},
++                {
++                    "type": "tool_use",
++                    "id": "tu_1",
++                    "name": "get_job",
++                    "input": {"job_id": "TJ1"},
++                },
++            ],
++        },
++        {
++            "role": "user",
++            "content": [
++                {"type": "tool_result", "tool_use_id": "tu_1", "content": "{}"}
++            ],
++        },
+     ]
+     session.pending["a1"] = PendingApproval(
+-        id="a1", session_key=session.key, tool="post_translation_publicly", tool_input={"x": 1},
+-        requested_by="U_MIKA", summary="Post", show_amount=False, amount_text=None,
+-        created_at=1.0, expires_at=2.0, tool_use_id="tu_9",
++        id="a1",
++        session_key=session.key,
++        tool="post_translation_publicly",
++        tool_input={"x": 1},
++        requested_by="U_MIKA",
++        summary="Post",
++        show_amount=False,
++        amount_text=None,
++        created_at=1.0,
++        expires_at=2.0,
++        tool_use_id="tu_9",
+     )
+-    session.plan = [{"id": "c1", "title": "Look up your jobs", "state": "complete", "detail": "2 found"}]
++    session.plan = [
++        {
++            "id": "c1",
++            "title": "Look up your jobs",
++            "state": "complete",
++            "detail": "2 found",
++        }
++    ]
+     return session
+ 
+ 
+@@ -89,21 +121,51 @@ async def test_lock_serialises_two_turns_on_one_thread(store):
+             order.append(f"{name}-out")
+ 
+     await asyncio.gather(turn("a", 0.05), turn("b", 0.0))
+-    assert order in (["a-in", "a-out", "b-in", "b-out"], ["b-in", "b-out", "a-in", "a-out"])
++    assert order in (
++        ["a-in", "a-out", "b-in", "b-out"],
++        ["b-in", "b-out", "a-in", "a-out"],
++    )
+ 
+ 
+ def test_history_is_capped_without_splitting_a_tool_pair():
+     messages = []
+     for i in range(40):
+         messages.append({"role": "user", "content": f"q{i}"})
+-        messages.append({"role": "assistant", "content": [{"type": "tool_use", "id": f"t{i}", "name": "get_job", "input": {}}]})
+-        messages.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": f"t{i}", "content": "x"}]})
+-        messages.append({"role": "assistant", "content": [{"type": "text", "text": f"a{i}"}]})
++        messages.append(
++            {
++                "role": "assistant",
++                "content": [
++                    {"type": "tool_use", "id": f"t{i}", "name": "get_job", "input": {}}
++                ],
++            }
++        )
++        messages.append(
++            {
++                "role": "user",
++                "content": [
++                    {"type": "tool_result", "tool_use_id": f"t{i}", "content": "x"}
++                ],
++            }
++        )
++        messages.append(
++            {"role": "assistant", "content": [{"type": "text", "text": f"a{i}"}]}
++        )
+     trimmed = trim_history(messages, limit=60)
+     assert len(trimmed) <= 60
+     assert trimmed[0]["role"] == "user" and isinstance(trimmed[0]["content"], str)
+-    used = {b["id"] for m in trimmed if m["role"] == "assistant" for b in m["content"] if b["type"] == "tool_use"}
+-    results = {b["tool_use_id"] for m in trimmed if m["role"] == "user" and isinstance(m["content"], list) for b in m["content"]}
++    used = {
++        b["id"]
++        for m in trimmed
++        if m["role"] == "assistant"
++        for b in m["content"]
++        if b["type"] == "tool_use"
++    }
++    results = {
++        b["tool_use_id"]
++        for m in trimmed
++        if m["role"] == "user" and isinstance(m["content"], list)
++        for b in m["content"]
++    }
+     assert used == results
+ 
+ 
+@@ -116,6 +178,7 @@ def test_facts_survive_json():
+     facts = make_facts(is_ibm=True, locale="ja-JP", enterprise_id="E1")
+     session = make_session(facts=facts)
+     from app.agent.core.types import Session
++
+     assert Session.from_json(session.to_json()).facts == facts
+ 
+ 
+diff --git a/tests/agent/test_slack_ui.py b/tests/agent/test_slack_ui.py
+index 621d3745..000f57dc 100644
+--- a/tests/agent/test_slack_ui.py
++++ b/tests/agent/test_slack_ui.py
+@@ -7,9 +7,18 @@ from tests.agent.fakes import make_facts
+ 
+ 
+ def approval(**overrides):
+-    base = dict(id="appr_1", session_key="T1:C1:1.2", tool="post_translation_publicly", tool_input={"secret": "x"},
+-                requested_by="U_MIKA", summary=copy.POST_PUBLICLY_PROMPT, show_amount=False, amount_text=None,
+-                created_at=1.0, expires_at=2.0)
++    base = dict(
++        id="appr_1",
++        session_key="T1:C1:1.2",
++        tool="post_translation_publicly",
++        tool_input={"secret": "x"},
++        requested_by="U_MIKA",
++        summary=copy.POST_PUBLICLY_PROMPT,
++        show_amount=False,
++        amount_text=None,
++        created_at=1.0,
++        expires_at=2.0,
++    )
+     base.update(overrides)
+     return PendingApproval(**base)
+ 
+@@ -18,7 +27,12 @@ def all_text(value):
+     if isinstance(value, str):
+         return [value]
+     if isinstance(value, dict):
+-        return [t for k, v in value.items() if k not in {"action_id", "block_id", "value", "type", "style"} for t in all_text(v)]
++        return [
++            t
++            for k, v in value.items()
++            if k not in {"action_id", "block_id", "value", "type", "style"}
++            for t in all_text(v)
++        ]
+     if isinstance(value, list):
+         return [t for v in value for t in all_text(v)]
+     return []
+@@ -26,27 +40,56 @@ def all_text(value):
+ 
+ def test_status_payload_has_title_only_when_given():
+     facts = make_facts()
+-    assert slack_ui.status_payload(facts, "processing") == {"channel_id": "D1", "thread_ts": "111.222", "status": "processing"}
++    assert slack_ui.status_payload(facts, "processing") == {
++        "channel_id": "D1",
++        "thread_ts": "111.222",
++        "status": "processing",
++    }
+     assert slack_ui.status_payload(facts, "processing", "Q3 deck")["title"] == "Q3 deck"
+ 
+ 
+ def test_stream_start_names_the_recipient_outside_a_dm():
+     dm = slack_ui.stream_start_payload(make_facts(surface="dm"), "")
+-    assert dm["task_display_mode"] == "plan" and "recipient_user_id" not in dm and "chunks" not in dm
+-    channel = slack_ui.stream_start_payload(make_facts(surface="mention", channel_id="C1"), "Hello")
+-    assert channel["recipient_user_id"] == "U_MIKA" and channel["recipient_team_id"] == "T1"
++    assert (
++        dm["task_display_mode"] == "plan"
++        and "recipient_user_id" not in dm
++        and "chunks" not in dm
++    )
++    channel = slack_ui.stream_start_payload(
++        make_facts(surface="mention", channel_id="C1"), "Hello"
++    )
++    assert (
++        channel["recipient_user_id"] == "U_MIKA"
++        and channel["recipient_team_id"] == "T1"
++    )
+     assert channel["chunks"][0]["markdown_text"] == "Hello"
+ 
+ 
+ def test_task_chunks_map_card_states():
+     plan = [
+-        {"id": "c1", "title": "Look up your jobs", "state": "complete", "detail": "2 found"},
++        {
++            "id": "c1",
++            "title": "Look up your jobs",
++            "state": "complete",
++            "detail": "2 found",
++        },
+         {"id": "c2", "title": "Your approval", "state": "waiting", "detail": ""},
+-        {"id": "c3", "title": "Post the translation", "state": "in_progress", "detail": ""},
++        {
++            "id": "c3",
++            "title": "Post the translation",
++            "state": "in_progress",
++            "detail": "",
++        },
+     ]
+     chunks = slack_ui.task_chunks(plan)
+-    assert [c["task"]["status"] for c in chunks] == ["complete", "pending", "in_progress"]
+-    assert chunks[0]["task"]["output"]["elements"][0]["elements"][0]["text"] == "2 found"
++    assert [c["task"]["status"] for c in chunks] == [
++        "complete",
++        "pending",
++        "in_progress",
++    ]
++    assert (
++        chunks[0]["task"]["output"]["elements"][0]["elements"][0]["text"] == "2 found"
++    )
+     assert "output" not in chunks[1]["task"]
+ 
+ 
+@@ -61,7 +104,9 @@ def test_approval_button_carries_only_the_id():
+ 
+ def test_amount_only_shown_when_allowed():
+     hidden = slack_ui.approval_blocks(approval(show_amount=False, amount_text=None))
+-    shown = slack_ui.approval_blocks(approval(show_amount=True, amount_text="USD 12.00"))
++    shown = slack_ui.approval_blocks(
++        approval(show_amount=True, amount_text="USD 12.00")
++    )
+     assert "USD" not in json.dumps(hidden)
+     assert "USD 12.00" in shown[0]["text"]["text"]
+ 
+@@ -71,8 +116,17 @@ def test_handoff_reuses_the_existing_openers_and_their_payload_shape():
+     blocks = slack_ui.handoff_blocks("media", files, "D1", "111.222")
+     button = blocks[1]["elements"][0]
+     assert button["action_id"] == "video_transcribe_translate"
+-    assert json.loads(button["value"]) == {"files": [{"id": "F1", "title": "town-hall.mp4"}], "channel_id": "D1", "thread_ts": "111.222"}
+-    assert slack_ui.handoff_blocks("document_translation", files, "D1", None)[1]["elements"][0]["action_id"] == "document_mt_job"
++    assert json.loads(button["value"]) == {
++        "files": [{"id": "F1", "title": "town-hall.mp4"}],
++        "channel_id": "D1",
++        "thread_ts": "111.222",
++    }
++    assert (
++        slack_ui.handoff_blocks("document_translation", files, "D1", None)[1][
++            "elements"
++        ][0]["action_id"]
++        == "document_mt_job"
++    )
+ 
+ 
+ def test_a_form_without_a_button_opener_gets_text_only():
+@@ -86,25 +140,43 @@ def test_every_form_has_a_mapping():
+ def test_suggestion_has_exactly_three_buttons_and_is_marked_private():
+     blocks = slack_ui.suggestion_blocks("s1", "Japanese")
+     assert blocks[0]["elements"][0]["text"] == "Only visible to you"
+-    assert [b["action_id"] for b in blocks[2]["elements"]] == ["agent_suggestion_act", "agent_suggestion_later", "agent_suggestion_never"]
++    assert [b["action_id"] for b in blocks[2]["elements"]] == [
++        "agent_suggestion_act",
++        "agent_suggestion_later",
++        "agent_suggestion_never",
++    ]
+ 
+ 
+ def test_home_blocks_hide_channel_list_from_non_admins():
+     muted = [{"label": "#launch-global, translation offers", "channel_id": "C1"}]
+     plain = slack_ui.home_blocks("off", muted, None)
+-    admin = slack_ui.home_blocks("off", muted, [{"label": "#launch-global, on", "channel_id": "C1"}])
++    admin = slack_ui.home_blocks(
++        "off", muted, [{"label": "#launch-global, on", "channel_id": "C1"}]
++    )
+     assert copy.HOME_CHANNELS_TITLE not in json.dumps(plain)
+     assert copy.HOME_CHANNELS_TITLE in json.dumps(admin)
+ 
+ 
+ def test_all_builder_text_follows_the_voice_rules_and_uses_no_emoji():
+     samples = [
+-        slack_ui.approval_blocks(approval()), slack_ui.quick_action_blocks(), slack_ui.connect_blocks(),
+-        slack_ui.suggestion_blocks("s1", "Japanese"), slack_ui.admin_only_blocks(),
+-        slack_ui.digest_blocks(["2 delivered"]), slack_ui.home_blocks("daily", [], None),
+-        *[slack_ui.handoff_blocks(form, [], "D1", None) for form in slack_ui.FORM_ACTION_IDS],
++        slack_ui.approval_blocks(approval()),
++        slack_ui.quick_action_blocks(),
++        slack_ui.connect_blocks(),
++        slack_ui.suggestion_blocks("s1", "Japanese"),
++        slack_ui.admin_only_blocks(),
++        slack_ui.digest_blocks(["2 delivered"]),
++        slack_ui.home_blocks("daily", [], None),
++        *[
++            slack_ui.handoff_blocks(form, [], "D1", None)
++            for form in slack_ui.FORM_ACTION_IDS
++        ],
++    ]
++    bad = [
++        f"{v.rule}: {t}"
++        for blocks in samples
++        for t in all_text(blocks)
++        for v in check_copy(t)
+     ]
+-    bad = [f"{v.rule}: {t}" for blocks in samples for t in all_text(blocks) for v in check_copy(t)]
+     assert bad == []
+     assert '"emoji": true' not in json.dumps(samples)
+     assert all(len(blocks) <= 50 for blocks in samples)
+diff --git a/tests/agent/test_suggestions.py b/tests/agent/test_suggestions.py
+new file mode 100644
+index 00000000..148b73c3
+--- /dev/null
++++ b/tests/agent/test_suggestions.py
+@@ -0,0 +1,115 @@
++import ast
++import inspect
++import pathlib
++
++from app.agent.core import suggestions as s
++from tests.agent.fakes import make_facts
++
++NOW = 1_000_000.0
++JA_CHANNEL = {"ja-JP": 14, "en-US": 6}
++
++
++def signal(**overrides):
++    base = dict(author_id="U_DANA", channel_id="C1", detected_language="en", length=90)
++    base.update(overrides)
++    return s.MessageSignal(**base)
++
++
++def channel(**overrides):
++    base = dict(enabled=True, member_languages=dict(JA_CHANNEL))
++    base.update(overrides)
++    return s.ChannelState(**base)
++
++
++def test_rule_1_off_until_enabled():
++    assert s.decide(signal(), channel(enabled=False), s.AuthorState(), NOW) is None
++    assert s.ChannelState().enabled is False
++
++
++def test_language_gap_in_an_enabled_channel_suggests_to_the_author_only():
++    suggestion = s.decide(signal(), channel(), s.AuthorState(), NOW)
++    assert suggestion == s.Suggestion("U_DANA", "C1", "ja")
++
++
++def test_rule_5_the_decision_cannot_receive_message_text():
++    fields = set(s.MessageSignal.__dataclass_fields__)
++    assert not fields & {"text", "message", "content", "body"}
++    assert "text" not in inspect.signature(s.decide).parameters
++    tree = ast.parse(pathlib.Path(s.__file__).read_text())
++    imported = [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
++    assert not any("llm" in name or "anthropic" in name for name in imported)
++
++
++def test_no_suggestion_when_the_author_already_writes_the_majority_language():
++    assert (
++        s.decide(signal(detected_language="ja"), channel(), s.AuthorState(), NOW)
++        is None
++    )
++
++
++def test_majority_needs_forty_percent():
++    mixed = {"ja": 3, "en": 3, "de": 3, "fr": 3}
++    assert (
++        s.decide(signal(), channel(member_languages=mixed), s.AuthorState(), NOW)
++        is None
++    )
++
++
++def test_rule_3_not_now_snoozes_for_a_day():
++    author = s.AuthorState()
++    s.not_now(author, NOW)
++    assert s.decide(signal(), channel(), author, NOW + 23 * 3600) is None
++    assert s.decide(signal(), channel(), author, NOW + 25 * 3600) is not None
++
++
++def test_rule_3_never_again_is_permanent_and_reversible_from_home():
++    author = s.AuthorState()
++    s.never_again(author)
++    assert s.decide(signal(), channel(), author, NOW + 10 * 365 * 24 * 3600) is None
++    s.unmute(author)
++    assert s.decide(signal(), channel(), author, NOW) is not None
++
++
++def test_rule_4_one_per_author_per_channel_per_day():
++    ch, author = channel(), s.AuthorState()
++    assert s.decide(signal(), ch, author, NOW) is not None
++    s.record_shown(ch, author, NOW)
++    assert s.decide(signal(), ch, author, NOW + 3600 * 5) is None
++    assert s.decide(signal(), ch, author, NOW + 3600 * 25) is not None
++
++
++def test_rule_4_three_per_channel_per_hour():
++    ch = channel()
++    for i in range(3):
++        s.record_shown(ch, s.AuthorState(), NOW + i)
++    assert s.decide(signal(author_id="U_NEW"), ch, s.AuthorState(), NOW + 10) is None
++    assert (
++        s.decide(signal(author_id="U_NEW"), ch, s.AuthorState(), NOW + 3700) is not None
++    )
++
++
++def test_noise_never_triggers():
++    for noisy in (
++        dict(is_bot=True),
++        dict(is_edit=True),
++        dict(is_thread_reply=True),
++        dict(is_only_links_or_code=True),
++        dict(length=39),
++        dict(detected_language=None),
++    ):
++        assert s.decide(signal(**noisy), channel(), s.AuthorState(), NOW) is None, noisy
++
++
++def test_unreadable_state_fails_closed():
++    assert s.decide(signal(), None, s.AuthorState(), NOW) is None
++    assert s.decide(signal(), channel(), None, NOW) is None
++
++
++def test_who_may_enable():
++    assert s.can_enable(make_facts(is_ibm=False)) is True
++    assert s.can_enable(make_facts(is_ibm=True, is_workspace_admin=False)) is False
++    assert s.can_enable(make_facts(is_ibm=True, is_workspace_admin=True)) is True
++
++
++def test_regional_variants_count_as_one_language():
++    assert s.majority_language({"pt-BR": 5, "pt-PT": 4, "en-US": 6}) == ("pt", 0.6)
+diff --git a/tests/agent/test_tools.py b/tests/agent/test_tools.py
+index 7f880714..cff3a56b 100644
+--- a/tests/agent/test_tools.py
++++ b/tests/agent/test_tools.py
+@@ -5,8 +5,15 @@ from app.agent.core.voice import check_copy
+ from tests.agent.fakes import ok
+ 
+ EXPECTED = {
+-    "get_job", "list_jobs", "account_status", "translate_text", "request_document_quote",
+-    "post_translation_publicly", "offer_form", "set_digest", "explain",
++    "get_job",
++    "list_jobs",
++    "account_status",
++    "translate_text",
++    "request_document_quote",
++    "post_translation_publicly",
++    "offer_form",
++    "set_digest",
++    "explain",
+ }
+ 
+ 
+@@ -16,7 +23,9 @@ def test_exactly_the_nine_tools():
+ 
+ def test_only_public_posting_is_gated():
+     registry = ToolRegistry()
+-    assert [s.name for s in registry.specs() if s.kind == "gated"] == ["post_translation_publicly"]
++    assert [s.name for s in registry.specs() if s.kind == "gated"] == [
++        "post_translation_publicly"
++    ]
+     assert registry.is_gated("post_translation_publicly")
+     assert not registry.is_gated("get_job")
+     assert not registry.is_gated("made_up")
+@@ -31,12 +40,18 @@ def test_no_tool_can_submit_or_accept_paid_work():
+ def test_schemas_are_strict():
+     for spec in ToolRegistry().specs():
+         assert spec.input_schema["additionalProperties"] is False, spec.name
+-        assert set(spec.input_schema["required"]) == set(spec.input_schema["properties"]), spec.name
++        assert set(spec.input_schema["required"]) == set(
++            spec.input_schema["properties"]
++        ), spec.name
+ 
+ 
+ def test_anthropic_shape():
+     tools = ToolRegistry().as_anthropic_tools()
+-    assert all(set(t) == {"name", "description", "input_schema", "strict"} and t["strict"] is True for t in tools)
++    assert all(
++        set(t) == {"name", "description", "input_schema", "strict"}
++        and t["strict"] is True
++        for t in tools
++    )
+ 
+ 
+ def test_offer_form_is_a_closed_set_including_the_document_form():
+@@ -47,8 +62,12 @@ def test_offer_form_is_a_closed_set_including_the_document_form():
+ 
+ def test_people_who_cannot_see_quotes_are_never_offered_the_quote_tool():
+     registry = ToolRegistry()
+-    assert "request_document_quote" not in {s.name for s in registry.specs_for(can_see_quotes=False)}
+-    assert "request_document_quote" in {s.name for s in registry.specs_for(can_see_quotes=True)}
++    assert "request_document_quote" not in {
++        s.name for s in registry.specs_for(can_see_quotes=False)
++    }
++    assert "request_document_quote" in {
++        s.name for s in registry.specs_for(can_see_quotes=True)
++    }
+ 
+ 
+ def test_binding():
+@@ -66,13 +85,27 @@ def test_binding():
+ 
+ 
+ def test_descriptions_follow_the_voice_rules():
+-    bad = [f"{s.name}: {v.rule}" for s in ToolRegistry().specs() for v in check_copy(s.description)]
++    bad = [
++        f"{s.name}: {v.rule}"
++        for s in ToolRegistry().specs()
++        for v in check_copy(s.description)
++    ]
+     assert bad == []
+ 
+ 
+ def test_schemas_use_only_keywords_strict_mode_supports():
+     import json
+-    unsupported = ("minItems", "maxItems", "minimum", "maximum", "multipleOf", "minLength", "maxLength", "pattern")
++
++    unsupported = (
++        "minItems",
++        "maxItems",
++        "minimum",
++        "maximum",
++        "multipleOf",
++        "minLength",
++        "maxLength",
++        "pattern",
++    )
+     for spec in ToolRegistry().specs():
+         text = json.dumps(spec.input_schema)
+         assert not any(f'"{k}"' in text for k in unsupported), spec.name
+-- 
+2.50.1 (Apple Git-155)
+

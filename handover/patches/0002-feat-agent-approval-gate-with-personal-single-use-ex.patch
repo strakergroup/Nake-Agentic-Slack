@@ -1,0 +1,356 @@
+From 57e7813027f74c8d5c5707c9601b252c07fe2393 Mon Sep 17 00:00:00 2001
+From: Nake Sekander <nake.sekander@strakergroup.com>
+Date: Mon, 21 Sep 2026 10:51:48 +0100
+Subject: [PATCH 02/11] feat(agent): approval gate with personal, single-use,
+ expiring approvals
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ app/agent/core/approvals.py   |  97 +++++++++++++++++++++++++
+ tests/agent/fakes.py          |  91 +++++++++++++++++++++++
+ tests/agent/test_approvals.py | 131 ++++++++++++++++++++++++++++++++++
+ 3 files changed, 319 insertions(+)
+ create mode 100644 app/agent/core/approvals.py
+ create mode 100644 tests/agent/fakes.py
+ create mode 100644 tests/agent/test_approvals.py
+
+diff --git a/app/agent/core/approvals.py b/app/agent/core/approvals.py
+new file mode 100644
+index 00000000..fd1732de
+--- /dev/null
++++ b/app/agent/core/approvals.py
+@@ -0,0 +1,97 @@
++"""The approval gate: a click by the right person is the only way a gated tool runs.
++
++Pure rules, no Slack and no model. The runner asks the gate to create a pending
++approval when the model proposes a gated tool, and only runs the tool with what
++`consume` returns. The button carries nothing but the approval id, so a tampered
++payload cannot change what runs.
++"""
++
++from __future__ import annotations
++
++import secrets
++from typing import Any, Callable
++
++from .types import PendingApproval, Session
++
++
++class ApprovalError(Exception):
++    """`reason` is one of: wrong_user, expired, unknown, already_used, stopped."""
++
++    def __init__(self, reason: str):
++        super().__init__(reason)
++        self.reason = reason
++
++
++class ApprovalGate:
++    def __init__(
++        self,
++        clock: Callable[[], float],
++        ttl_seconds: int = 900,
++        id_factory: Callable[[], str] = lambda: secrets.token_urlsafe(24),
++        is_gated: Callable[[str], bool] = lambda name: True,
++    ):
++        self._clock = clock
++        self._ttl = ttl_seconds
++        self._new_id = id_factory
++        self._is_gated = is_gated
++
++    def create(
++        self,
++        session: Session,
++        tool: str,
++        tool_input: dict[str, Any],
++        requested_by: str,
++        summary: str,
++        show_amount: bool = False,
++        amount_text: str | None = None,
++        tool_use_id: str | None = None,
++    ) -> PendingApproval:
++        if not self._is_gated(tool):
++            raise ValueError(f"{tool} is not a gated tool; only gated tools get approvals")
++        now = self._clock()
++        approval = PendingApproval(
++            id=self._new_id(),
++            session_key=session.key,
++            tool=tool,
++            tool_input=dict(tool_input),
++            requested_by=requested_by,
++            summary=summary,
++            show_amount=show_amount,
++            amount_text=amount_text if show_amount else None,
++            created_at=now,
++            expires_at=now + self._ttl,
++            tool_use_id=tool_use_id,
++        )
++        session.pending[approval.id] = approval
++        return approval
++
++    def verify(self, session: Session, approval_id: str, clicked_by: str) -> PendingApproval:
++        if approval_id in session.used_approvals:
++            raise ApprovalError("already_used")
++        if session.stopped:
++            raise ApprovalError("stopped")
++        approval = session.pending.get(approval_id)
++        if approval is None or approval.session_key != session.key:
++            raise ApprovalError("unknown")
++        if approval.requested_by != clicked_by:
++            raise ApprovalError("wrong_user")
++        if self._clock() > approval.expires_at:
++            raise ApprovalError("expired")
++        return approval
++
++    def consume(self, session: Session, approval_id: str, clicked_by: str) -> PendingApproval:
++        """Verify, then mark used. The returned copy is the only source of tool input."""
++        approval = self.verify(session, approval_id, clicked_by)
++        del session.pending[approval_id]
++        session.used_approvals.append(approval_id)
++        return approval
++
++    def decline(self, session: Session, approval_id: str, clicked_by: str) -> PendingApproval:
++        approval = self.verify(session, approval_id, clicked_by)
++        del session.pending[approval_id]
++        session.used_approvals.append(approval_id)
++        return approval
++
++    def cancel_all(self, session: Session) -> None:
++        session.used_approvals.extend(session.pending)
++        session.pending.clear()
+diff --git a/tests/agent/fakes.py b/tests/agent/fakes.py
+new file mode 100644
+index 00000000..31d5c6cc
+--- /dev/null
++++ b/tests/agent/fakes.py
+@@ -0,0 +1,91 @@
++"""Test doubles for the agent core. Kept out of a conftest on purpose: the core
++tests run with --noconftest because the app's root conftest opens MySQL."""
++
++from __future__ import annotations
++
++from typing import Any
++
++from app.agent.core.types import AgentFacts, Session, ToolOutcome, session_key
++
++
++class FixedClock:
++    def __init__(self, now: float = 1_000_000.0):
++        self.now = now
++
++    def __call__(self) -> float:
++        return self.now
++
++    def advance(self, seconds: float) -> None:
++        self.now += seconds
++
++
++def make_facts(**overrides: Any) -> AgentFacts:
++    base: dict[str, Any] = dict(
++        user_id="U_MIKA", team_id="T1", channel_id="D1", enterprise_id=None, thread_ts="111.222",
++        locale="en-US", is_connected=True, can_see_quotes=True, is_ibm=False,
++        is_workspace_admin=False, surface="dm", display_name="Mika Kato",
++    )
++    base.update(overrides)
++    return AgentFacts(**base)
++
++
++def make_session(**overrides: Any) -> Session:
++    facts = overrides.pop("facts", make_facts())
++    return Session(key=session_key(facts), facts=facts, **overrides)
++
++
++class RecordingSlack:
++    """Implements SlackPort and records every call in order."""
++
++    def __init__(self):
++        self.calls: list[tuple[str, dict[str, Any]]] = []
++        self._ts = 0
++
++    def names(self) -> list[str]:
++        return [name for name, _ in self.calls]
++
++    def texts(self) -> list[str]:
++        return [args.get("text", "") for _, args in self.calls]
++
++    async def set_status(self, facts, status, title=None):
++        self.calls.append(("set_status", {"status": status, "title": title}))
++
++    async def stream_start(self, facts, text):
++        self._ts += 1
++        self.calls.append(("stream_start", {"text": text}))
++        return f"ts-{self._ts}"
++
++    async def stream_tasks(self, facts, ts, plan):
++        self.calls.append(("stream_tasks", {"ts": ts, "plan": [dict(card) for card in plan]}))
++
++    async def stream_stop(self, facts, ts, text, blocks, session_status):
++        self.calls.append(("stream_stop", {"ts": ts, "text": text, "blocks": blocks, "session_status": session_status}))
++
++    async def post(self, facts, text, blocks=None):
++        self.calls.append(("post", {"text": text, "blocks": blocks}))
++
++    async def post_private(self, facts, text, blocks=None):
++        self.calls.append(("post_private", {"text": text, "blocks": blocks}))
++
++
++class ScriptedLlm:
++    """Returns queued LlmSteps and records what it was sent."""
++
++    def __init__(self, steps):
++        self._steps = list(steps)
++        self.requests: list[dict[str, Any]] = []
++
++    async def step(self, system, tools, messages):
++        import copy as _copy
++
++        self.requests.append({"system": system, "tools": tools, "messages": _copy.deepcopy(messages)})
++        if not self._steps:
++            raise AssertionError("ScriptedLlm ran out of steps")
++        step = self._steps.pop(0)
++        if isinstance(step, Exception):
++            raise step
++        return step
++
++
++def ok(content: str = "done", **kwargs: Any) -> ToolOutcome:
++    return ToolOutcome(content=content, **kwargs)
+diff --git a/tests/agent/test_approvals.py b/tests/agent/test_approvals.py
+new file mode 100644
+index 00000000..4d8d671c
+--- /dev/null
++++ b/tests/agent/test_approvals.py
+@@ -0,0 +1,131 @@
++import pytest
++
++from app.agent.core.approvals import ApprovalError, ApprovalGate
++from tests.agent.fakes import FixedClock, make_facts, make_session
++
++GATED = {"post_translation_publicly"}
++
++
++def gate(clock=None, **kwargs):
++    return ApprovalGate(clock or FixedClock(), is_gated=lambda n: n in GATED, **kwargs)
++
++
++def create(g, session, **overrides):
++    args = dict(tool="post_translation_publicly", tool_input={"target_language": "ja"},
++                requested_by="U_MIKA", summary="Post in Japanese")
++    args.update(overrides)
++    return g.create(session, **args)
++
++
++def test_create_stores_a_long_random_id_with_an_expiry():
++    clock, session = FixedClock(), make_session()
++    approval = create(gate(clock, ttl_seconds=900), session)
++    assert len(approval.id) >= 22  # 128 bits or more, url-safe
++    assert approval.expires_at == clock.now + 900
++    assert session.pending[approval.id] is approval
++
++
++def test_ids_are_unique():
++    g, session = gate(), make_session()
++    assert len({create(g, session).id for _ in range(50)}) == 50
++
++
++def test_verify_passes_for_the_requester_in_time():
++    g, session = gate(), make_session()
++    approval = create(g, session)
++    assert g.verify(session, approval.id, "U_MIKA") == approval
++
++
++def test_a_different_person_cannot_approve_even_an_admin():
++    g, session = gate(), make_session()
++    approval = create(g, session)
++    with pytest.raises(ApprovalError) as err:
++        g.verify(session, approval.id, "U_ADMIN")
++    assert err.value.reason == "wrong_user"
++
++
++def test_expired_one_second_after_the_limit():
++    clock = FixedClock()
++    g, session = gate(clock, ttl_seconds=900), make_session()
++    approval = create(g, session)
++    clock.advance(900)
++    g.verify(session, approval.id, "U_MIKA")
++    clock.advance(1)
++    with pytest.raises(ApprovalError) as err:
++        g.verify(session, approval.id, "U_MIKA")
++    assert err.value.reason == "expired"
++
++
++def test_unknown_id_and_id_from_another_session():
++    g = gate()
++    mine, other = make_session(), make_session(facts=make_facts(thread_ts="999.000"))
++    theirs = create(g, other)
++    for approval_id in ("nope", theirs.id):
++        with pytest.raises(ApprovalError) as err:
++            g.verify(mine, approval_id, "U_MIKA")
++        assert err.value.reason == "unknown"
++
++
++def test_an_approval_smuggled_onto_another_session_is_still_unknown():
++    g = gate()
++    mine, other = make_session(), make_session(facts=make_facts(thread_ts="999.000"))
++    theirs = create(g, other)
++    mine.pending[theirs.id] = theirs
++    with pytest.raises(ApprovalError) as err:
++        g.verify(mine, theirs.id, "U_MIKA")
++    assert err.value.reason == "unknown"
++
++
++def test_a_double_click_cannot_run_twice():
++    g, session = gate(), make_session()
++    approval = create(g, session)
++    g.consume(session, approval.id, "U_MIKA")
++    with pytest.raises(ApprovalError) as err:
++        g.consume(session, approval.id, "U_MIKA")
++    assert err.value.reason == "already_used"
++
++
++def test_stopped_session_refuses_old_approvals():
++    g, session = gate(), make_session()
++    approval = create(g, session)
++    session.stopped = True
++    with pytest.raises(ApprovalError) as err:
++        g.verify(session, approval.id, "U_MIKA")
++    assert err.value.reason == "stopped"
++
++
++def test_consume_returns_the_stored_input_not_what_the_click_carried():
++    g, session = gate(), make_session()
++    original = {"target_language": "ja"}
++    approval = create(g, session, tool_input=original)
++    original["target_language"] = "tampered"
++    assert g.consume(session, approval.id, "U_MIKA").tool_input == {"target_language": "ja"}
++
++
++def test_lookup_tools_cannot_get_approvals():
++    with pytest.raises(ValueError):
++        create(gate(), make_session(), tool="get_job")
++
++
++def test_hidden_amounts_never_leak():
++    approval = create(gate(), make_session(), show_amount=False, amount_text="USD 12.00")
++    assert approval.amount_text is None
++
++
++def test_decline_uses_up_the_approval():
++    g, session = gate(), make_session()
++    approval = create(g, session)
++    g.decline(session, approval.id, "U_MIKA")
++    with pytest.raises(ApprovalError) as err:
++        g.consume(session, approval.id, "U_MIKA")
++    assert err.value.reason == "already_used"
++
++
++def test_cancel_all_clears_pending():
++    g, session = gate(), make_session()
++    approval = create(g, session)
++    g.cancel_all(session)
++    assert session.pending == {}
++    with pytest.raises(ApprovalError) as err:
++        g.verify(session, approval.id, "U_MIKA")
++    assert err.value.reason == "already_used"
+-- 
+2.50.1 (Apple Git-155)
+

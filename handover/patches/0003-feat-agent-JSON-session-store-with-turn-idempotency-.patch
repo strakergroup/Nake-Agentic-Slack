@@ -1,0 +1,288 @@
+From ac7f090e30d0c80f696f840c3ec71c28de6f4beb Mon Sep 17 00:00:00 2001
+From: Nake Sekander <nake.sekander@strakergroup.com>
+Date: Mon, 21 Sep 2026 10:52:30 +0100
+Subject: [PATCH 03/11] feat(agent): JSON session store with turn idempotency,
+ quote map and locks
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ app/agent/core/session.py   | 140 ++++++++++++++++++++++++++++++++++++
+ tests/agent/test_session.py | 119 ++++++++++++++++++++++++++++++
+ 2 files changed, 259 insertions(+)
+ create mode 100644 app/agent/core/session.py
+ create mode 100644 tests/agent/test_session.py
+
+diff --git a/app/agent/core/session.py b/app/agent/core/session.py
+new file mode 100644
+index 00000000..0129cb7f
+--- /dev/null
++++ b/app/agent/core/session.py
+@@ -0,0 +1,140 @@
++"""Session memory for the agent.
++
++One session per Slack thread. State is JSON only (no pickle) so it can pause for
++hours on a person's click and resume in a different process. Also holds the
++agent's own duplicate-event guard (the app's dedupe only covers Enterprise Grid)
++and the small map that lets a backend event find the session it belongs to.
++"""
++
++from __future__ import annotations
++
++import asyncio
++import json
++from contextlib import asynccontextmanager
++from typing import Any, AsyncIterator, Protocol
++
++from .types import Session
++
++PREFIX = "slack-ray-translator:agent:"
++SESSION_TTL = 7 * 24 * 3600
++TURN_TTL = 3600
++QUOTE_TTL = 24 * 3600
++LOCK_TTL = 120
++MAX_MESSAGES = 60
++
++
++def trim_history(messages: list[dict[str, Any]], limit: int = MAX_MESSAGES) -> list[dict[str, Any]]:
++    """Drop the oldest messages, never splitting a tool_use from its tool_result.
++
++    A safe cut point is a user message that carries no tool_result blocks.
++    """
++    if len(messages) <= limit:
++        return messages
++
++    def starts_clean(message: dict[str, Any]) -> bool:
++        if message.get("role") != "user":
++            return False
++        content = message.get("content")
++        if isinstance(content, str):
++            return True
++        return not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content or [])
++
++    for index in range(len(messages) - limit, len(messages)):
++        if starts_clean(messages[index]):
++            return messages[index:]
++    return messages
++
++
++class SessionStore(Protocol):
++    async def load(self, key: str) -> Session | None: ...
++    async def save(self, session: Session) -> None: ...
++    async def claim_turn(self, event_id: str) -> bool: ...
++    async def link_quote(self, quote_id: str, session_key: str) -> None: ...
++    async def session_for_quote(self, quote_id: str) -> str | None: ...
++    async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None: ...
++    async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None: ...
++    def lock(self, key: str) -> Any: ...
++
++
++class InMemorySessionStore:
++    def __init__(self) -> None:
++        self._sessions: dict[str, str] = {}
++        self._turns: set[str] = set()
++        self._quotes: dict[str, str] = {}
++        self._open: dict[str, str] = {}
++        self._locks: dict[str, asyncio.Lock] = {}
++
++    async def load(self, key: str) -> Session | None:
++        raw = self._sessions.get(key)
++        return Session.from_json(json.loads(raw)) if raw else None
++
++    async def save(self, session: Session) -> None:
++        session.messages = trim_history(session.messages)
++        self._sessions[session.key] = json.dumps(session.to_json())
++
++    async def claim_turn(self, event_id: str) -> bool:
++        if event_id in self._turns:
++            return False
++        self._turns.add(event_id)
++        return True
++
++    async def link_quote(self, quote_id: str, session_key: str) -> None:
++        self._quotes[quote_id] = session_key
++
++    async def session_for_quote(self, quote_id: str) -> str | None:
++        return self._quotes.get(quote_id)
++
++    async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None:
++        self._open[f"{team_id}:{channel_id}:{user_id}"] = session_key
++
++    async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None:
++        return self._open.get(f"{team_id}:{channel_id}:{user_id}")
++
++    @asynccontextmanager
++    async def lock(self, key: str) -> AsyncIterator[None]:
++        lock = self._locks.setdefault(key, asyncio.Lock())
++        async with lock:
++            yield
++
++
++class RedisSessionStore:
++    """`redis` is an asyncio Redis client, injected by the adapter."""
++
++    def __init__(self, redis: Any) -> None:
++        self._redis = redis
++
++    async def load(self, key: str) -> Session | None:
++        raw = await self._redis.get(f"{PREFIX}session:{key}")
++        if not raw:
++            return None
++        if isinstance(raw, bytes):
++            raw = raw.decode()
++        return Session.from_json(json.loads(raw))
++
++    async def save(self, session: Session) -> None:
++        session.messages = trim_history(session.messages)
++        await self._redis.set(f"{PREFIX}session:{session.key}", json.dumps(session.to_json()), ex=SESSION_TTL)
++
++    async def claim_turn(self, event_id: str) -> bool:
++        return bool(await self._redis.set(f"{PREFIX}turn:{event_id}", "1", nx=True, ex=TURN_TTL))
++
++    async def link_quote(self, quote_id: str, session_key: str) -> None:
++        await self._redis.set(f"{PREFIX}quote:{quote_id}", session_key, ex=QUOTE_TTL)
++
++    async def session_for_quote(self, quote_id: str) -> str | None:
++        return _text(await self._redis.get(f"{PREFIX}quote:{quote_id}"))
++
++    async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None:
++        await self._redis.set(f"{PREFIX}open:{team_id}:{channel_id}:{user_id}", session_key, ex=SESSION_TTL)
++
++    async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None:
++        return _text(await self._redis.get(f"{PREFIX}open:{team_id}:{channel_id}:{user_id}"))
++
++    def lock(self, key: str) -> Any:
++        return self._redis.lock(f"{PREFIX}lock:{key}", timeout=LOCK_TTL, blocking_timeout=30)
++
++
++def _text(value: Any) -> str | None:
++    if value is None:
++        return None
++    return value.decode() if isinstance(value, bytes) else str(value)
+diff --git a/tests/agent/test_session.py b/tests/agent/test_session.py
+new file mode 100644
+index 00000000..9ca6ae58
+--- /dev/null
++++ b/tests/agent/test_session.py
+@@ -0,0 +1,119 @@
++import asyncio
++
++import fakeredis.aioredis
++import pytest
++
++from app.agent.core.session import (
++    PREFIX, SESSION_TTL, InMemorySessionStore, RedisSessionStore, trim_history,
++)
++from app.agent.core.types import PendingApproval
++from tests.agent.fakes import make_facts, make_session
++
++
++@pytest.fixture(params=["memory", "redis"])
++def store(request):
++    if request.param == "memory":
++        return InMemorySessionStore()
++    return RedisSessionStore(fakeredis.aioredis.FakeRedis())
++
++
++def full_session():
++    session = make_session(title="Q3 deck", status="suspended")
++    session.messages = [
++        {"role": "user", "content": "Translate this"},
++        {"role": "assistant", "content": [
++            {"type": "thinking", "thinking": "", "signature": "abc"},
++            {"type": "tool_use", "id": "tu_1", "name": "get_job", "input": {"job_id": "TJ1"}},
++        ]},
++        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu_1", "content": "{}"}]},
++    ]
++    session.pending["a1"] = PendingApproval(
++        id="a1", session_key=session.key, tool="post_translation_publicly", tool_input={"x": 1},
++        requested_by="U_MIKA", summary="Post", show_amount=False, amount_text=None,
++        created_at=1.0, expires_at=2.0, tool_use_id="tu_9",
++    )
++    session.plan = [{"id": "c1", "title": "Look up your jobs", "state": "complete", "detail": "2 found"}]
++    return session
++
++
++@pytest.mark.asyncio
++async def test_round_trip_keeps_everything(store):
++    session = full_session()
++    await store.save(session)
++    loaded = await store.load(session.key)
++    assert loaded == session
++    assert loaded.facts.display_name == "Mika Kato"
++    assert loaded.pending["a1"].tool_use_id == "tu_9"
++
++
++@pytest.mark.asyncio
++async def test_missing_session_is_none(store):
++    assert await store.load("T1:D1:nope") is None
++
++
++@pytest.mark.asyncio
++async def test_redis_sessions_expire_in_seven_days():
++    redis = fakeredis.aioredis.FakeRedis()
++    store, session = RedisSessionStore(redis), full_session()
++    await store.save(session)
++    ttl = await redis.ttl(f"{PREFIX}session:{session.key}")
++    assert SESSION_TTL - 5 <= ttl <= SESSION_TTL
++
++
++@pytest.mark.asyncio
++async def test_a_turn_can_be_claimed_once(store):
++    assert await store.claim_turn("Ev123") is True
++    assert await store.claim_turn("Ev123") is False
++    assert await store.claim_turn("Ev124") is True
++
++
++@pytest.mark.asyncio
++async def test_quote_and_channel_lookups(store):
++    await store.link_quote("q-1", "T1:D1:111.222")
++    assert await store.session_for_quote("q-1") == "T1:D1:111.222"
++    assert await store.session_for_quote("q-2") is None
++    await store.remember_open("T1", "D1", "U_MIKA", "T1:D1:111.222")
++    await store.remember_open("T1", "D1", "U_MIKA", "T1:D1:333.444")
++    assert await store.session_for_channel_user("T1", "D1", "U_MIKA") == "T1:D1:333.444"
++    assert await store.session_for_channel_user("T1", "D1", "U_OTHER") is None
++
++
++@pytest.mark.asyncio
++async def test_lock_serialises_two_turns_on_one_thread(store):
++    order = []
++
++    async def turn(name, hold):
++        async with store.lock("T1:D1:111.222"):
++            order.append(f"{name}-in")
++            await asyncio.sleep(hold)
++            order.append(f"{name}-out")
++
++    await asyncio.gather(turn("a", 0.05), turn("b", 0.0))
++    assert order in (["a-in", "a-out", "b-in", "b-out"], ["b-in", "b-out", "a-in", "a-out"])
++
++
++def test_history_is_capped_without_splitting_a_tool_pair():
++    messages = []
++    for i in range(40):
++        messages.append({"role": "user", "content": f"q{i}"})
++        messages.append({"role": "assistant", "content": [{"type": "tool_use", "id": f"t{i}", "name": "get_job", "input": {}}]})
++        messages.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": f"t{i}", "content": "x"}]})
++        messages.append({"role": "assistant", "content": [{"type": "text", "text": f"a{i}"}]})
++    trimmed = trim_history(messages, limit=60)
++    assert len(trimmed) <= 60
++    assert trimmed[0]["role"] == "user" and isinstance(trimmed[0]["content"], str)
++    used = {b["id"] for m in trimmed if m["role"] == "assistant" for b in m["content"] if b["type"] == "tool_use"}
++    results = {b["tool_use_id"] for m in trimmed if m["role"] == "user" and isinstance(m["content"], list) for b in m["content"]}
++    assert used == results
++
++
++def test_short_history_is_untouched():
++    messages = [{"role": "user", "content": "hi"}]
++    assert trim_history(messages) is messages
++
++
++def test_facts_survive_json():
++    facts = make_facts(is_ibm=True, locale="ja-JP", enterprise_id="E1")
++    session = make_session(facts=facts)
++    from app.agent.core.types import Session
++    assert Session.from_json(session.to_json()).facts == facts
+-- 
+2.50.1 (Apple Git-155)
+
