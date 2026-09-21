@@ -24,7 +24,9 @@ class LlmRequestError(Exception):
 
 @dataclass(frozen=True)
 class LlmStep:
-    content: list[dict[str, Any]]  # assistant content blocks, stored and replayed verbatim
+    content: list[
+        dict[str, Any]
+    ]  # assistant content blocks, stored and replayed verbatim
     tool_calls: list[ToolCall]
     text: str
     stop_reason: str
@@ -34,29 +36,54 @@ class LlmStep:
 
 
 class LlmPort(Protocol):
-    async def step(self, system: str, tools: list[ToolSpec], messages: list[dict[str, Any]]) -> LlmStep: ...
+    async def step(
+        self, system: str, tools: list[ToolSpec], messages: list[dict[str, Any]]
+    ) -> LlmStep: ...
 
 
 class ClaudeLlm:
-    def __init__(self, api_key: str | None = None, model: str = "claude-opus-5", max_tokens: int = 16000, client: Any = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "claude-opus-5",
+        max_tokens: int = 16000,
+        client: Any = None,
+    ):
         if client is None:
             import anthropic
 
-            client = anthropic.AsyncAnthropic(api_key=api_key) if api_key else anthropic.AsyncAnthropic()
+            client = (
+                anthropic.AsyncAnthropic(api_key=api_key)
+                if api_key
+                else anthropic.AsyncAnthropic()
+            )
         self._client = client
         self._model = model
         self._max_tokens = max_tokens
 
-    async def step(self, system: str, tools: list[ToolSpec], messages: list[dict[str, Any]]) -> LlmStep:
+    async def step(
+        self, system: str, tools: list[ToolSpec], messages: list[dict[str, Any]]
+    ) -> LlmStep:
         import anthropic
 
         try:
             response = await self._client.messages.create(
                 model=self._model,
                 max_tokens=self._max_tokens,
-                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+                system=[
+                    {
+                        "type": "text",
+                        "text": system,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
                 tools=[
-                    {"name": t.name, "description": t.description, "input_schema": t.input_schema, "strict": True}
+                    {
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.input_schema,
+                        "strict": True,
+                    }
                     for t in tools
                 ],
                 thinking={"type": "adaptive"},
@@ -72,7 +99,11 @@ class ClaudeLlm:
             raise LlmRequestError(f"request rejected {exc.status_code}") from exc
 
         content = [block.model_dump(exclude_none=True) for block in response.content]
-        calls = [ToolCall(id=b.id, name=b.name, input=dict(b.input)) for b in response.content if b.type == "tool_use"]
+        calls = [
+            ToolCall(id=b.id, name=b.name, input=dict(b.input))
+            for b in response.content
+            if b.type == "tool_use"
+        ]
         text = "".join(b.text for b in response.content if b.type == "text")
         return LlmStep(
             content=content,

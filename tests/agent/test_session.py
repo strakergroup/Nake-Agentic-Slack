@@ -4,7 +4,11 @@ import fakeredis.aioredis
 import pytest
 
 from app.agent.core.session import (
-    PREFIX, SESSION_TTL, InMemorySessionStore, RedisSessionStore, trim_history,
+    PREFIX,
+    SESSION_TTL,
+    InMemorySessionStore,
+    RedisSessionStore,
+    trim_history,
 )
 from app.agent.core.types import PendingApproval
 from tests.agent.fakes import make_facts, make_session
@@ -21,18 +25,46 @@ def full_session():
     session = make_session(title="Q3 deck", status="suspended")
     session.messages = [
         {"role": "user", "content": "Translate this"},
-        {"role": "assistant", "content": [
-            {"type": "thinking", "thinking": "", "signature": "abc"},
-            {"type": "tool_use", "id": "tu_1", "name": "get_job", "input": {"job_id": "TJ1"}},
-        ]},
-        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu_1", "content": "{}"}]},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "", "signature": "abc"},
+                {
+                    "type": "tool_use",
+                    "id": "tu_1",
+                    "name": "get_job",
+                    "input": {"job_id": "TJ1"},
+                },
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "tu_1", "content": "{}"}
+            ],
+        },
     ]
     session.pending["a1"] = PendingApproval(
-        id="a1", session_key=session.key, tool="post_translation_publicly", tool_input={"x": 1},
-        requested_by="U_MIKA", summary="Post", show_amount=False, amount_text=None,
-        created_at=1.0, expires_at=2.0, tool_use_id="tu_9",
+        id="a1",
+        session_key=session.key,
+        tool="post_translation_publicly",
+        tool_input={"x": 1},
+        requested_by="U_MIKA",
+        summary="Post",
+        show_amount=False,
+        amount_text=None,
+        created_at=1.0,
+        expires_at=2.0,
+        tool_use_id="tu_9",
     )
-    session.plan = [{"id": "c1", "title": "Look up your jobs", "state": "complete", "detail": "2 found"}]
+    session.plan = [
+        {
+            "id": "c1",
+            "title": "Look up your jobs",
+            "state": "complete",
+            "detail": "2 found",
+        }
+    ]
     return session
 
 
@@ -89,21 +121,51 @@ async def test_lock_serialises_two_turns_on_one_thread(store):
             order.append(f"{name}-out")
 
     await asyncio.gather(turn("a", 0.05), turn("b", 0.0))
-    assert order in (["a-in", "a-out", "b-in", "b-out"], ["b-in", "b-out", "a-in", "a-out"])
+    assert order in (
+        ["a-in", "a-out", "b-in", "b-out"],
+        ["b-in", "b-out", "a-in", "a-out"],
+    )
 
 
 def test_history_is_capped_without_splitting_a_tool_pair():
     messages = []
     for i in range(40):
         messages.append({"role": "user", "content": f"q{i}"})
-        messages.append({"role": "assistant", "content": [{"type": "tool_use", "id": f"t{i}", "name": "get_job", "input": {}}]})
-        messages.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": f"t{i}", "content": "x"}]})
-        messages.append({"role": "assistant", "content": [{"type": "text", "text": f"a{i}"}]})
+        messages.append(
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "id": f"t{i}", "name": "get_job", "input": {}}
+                ],
+            }
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": f"t{i}", "content": "x"}
+                ],
+            }
+        )
+        messages.append(
+            {"role": "assistant", "content": [{"type": "text", "text": f"a{i}"}]}
+        )
     trimmed = trim_history(messages, limit=60)
     assert len(trimmed) <= 60
     assert trimmed[0]["role"] == "user" and isinstance(trimmed[0]["content"], str)
-    used = {b["id"] for m in trimmed if m["role"] == "assistant" for b in m["content"] if b["type"] == "tool_use"}
-    results = {b["tool_use_id"] for m in trimmed if m["role"] == "user" and isinstance(m["content"], list) for b in m["content"]}
+    used = {
+        b["id"]
+        for m in trimmed
+        if m["role"] == "assistant"
+        for b in m["content"]
+        if b["type"] == "tool_use"
+    }
+    results = {
+        b["tool_use_id"]
+        for m in trimmed
+        if m["role"] == "user" and isinstance(m["content"], list)
+        for b in m["content"]
+    }
     assert used == results
 
 
@@ -116,6 +178,7 @@ def test_facts_survive_json():
     facts = make_facts(is_ibm=True, locale="ja-JP", enterprise_id="E1")
     session = make_session(facts=facts)
     from app.agent.core.types import Session
+
     assert Session.from_json(session.to_json()).facts == facts
 
 

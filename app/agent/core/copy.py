@@ -35,7 +35,9 @@ DECLINE = "Decline"
 POST_PUBLICLY_PROMPT = "Arbitr will post this translation in the thread, visible to everyone in the channel."
 POST_PUBLICLY_APPROVE = "Post it"
 NOT_NOW = "Not now"
-WAITING_FOR_APPROVAL = "Waiting for the person to approve. Do not claim the action has happened."
+WAITING_FOR_APPROVAL = (
+    "Waiting for the person to approve. Do not claim the action has happened."
+)
 
 APPROVED = "Approved. Arbitr is on it."
 DECLINED = "Declined. Nothing was posted and nothing was charged. Ask again whenever you need it."
@@ -124,7 +126,14 @@ CONNECT_BUTTON = "Connect account"
 
 # Strings that may be shown in IBM workspaces. They must never mention account
 # connection, balances or buying anything (tests/agent/test_copy.py).
-IBM_SAFE = [HELP_IBM_GENERIC, HELP_NO_PRICE, FALLBACK_MODEL_DOWN, FALLBACK_TOOL_FAILED, STOPPED, DECLINED]
+IBM_SAFE = [
+    HELP_IBM_GENERIC,
+    HELP_NO_PRICE,
+    FALLBACK_MODEL_DOWN,
+    FALLBACK_TOOL_FAILED,
+    STOPPED,
+    DECLINED,
+]
 
 # --- suggestions (no model involved) -----------------------------------------
 SUGGESTION_PRIVATE_LABEL = "Only visible to you"
@@ -137,8 +146,12 @@ SUGGESTION_MUTED = (
     "Done. Arbitr will not suggest translations to you in this channel. "
     "You can change this in the Arbitr Home tab."
 )
-SUGGESTION_ATTRIBUTION = "Translated from {source} by Arbitr (AI). Posted at {name}'s request."
-SUGGESTIONS_ENABLED = "Suggestions are now on in this channel. Anyone here can turn them off."
+SUGGESTION_ATTRIBUTION = (
+    "Translated from {source} by Arbitr (AI). Posted at {name}'s request."
+)
+SUGGESTIONS_ENABLED = (
+    "Suggestions are now on in this channel. Anyone here can turn them off."
+)
 ADMIN_ONLY_SUGGESTIONS = (
     "In this workspace only an admin can turn on channel suggestions. "
     "This keeps administrators in control of where Arbitr speaks first. "

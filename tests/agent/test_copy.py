@@ -14,7 +14,10 @@ def test_every_fixed_string_passes_the_voice_rules():
 
 
 def test_disclaimer_matches_the_poc():
-    assert copy.DISCLAIMER == "AI output can be inaccurate. Human review is available on any job."
+    assert (
+        copy.DISCLAIMER
+        == "AI output can be inaccurate. Human review is available on any job."
+    )
 
 
 def _sentences(text):
@@ -42,7 +45,9 @@ def test_refusals_never_apologise():
 
 def test_ibm_safe_strings_never_mention_connection_or_money():
     for text in copy.IBM_SAFE:
-        assert not re.search(r"\b(connect|top up|purchase|balance|buy)\b", text, re.I), text
+        assert not re.search(
+            r"\b(connect|top up|purchase|balance|buy)\b", text, re.I
+        ), text
 
 
 def test_every_form_has_an_intro_and_a_button():
@@ -51,4 +56,10 @@ def test_every_form_has_an_intro_and_a_button():
 
 
 def test_every_approval_error_reason_has_copy():
-    assert set(copy.APPROVAL_ERRORS) == {"wrong_user", "expired", "unknown", "already_used", "stopped"}
+    assert set(copy.APPROVAL_ERRORS) == {
+        "wrong_user",
+        "expired",
+        "unknown",
+        "already_used",
+        "stopped",
+    }

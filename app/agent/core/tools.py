@@ -13,18 +13,38 @@ from typing import Any
 
 from .types import ToolHandler, ToolSpec
 
-FORMS = ["document_translation", "media", "quality_evaluation", "human_translation", "new_job", "channel_settings"]
+FORMS = [
+    "document_translation",
+    "media",
+    "quality_evaluation",
+    "human_translation",
+    "new_job",
+    "channel_settings",
+]
 
 
 def _schema(properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
-    return {"type": "object", "properties": properties, "required": required, "additionalProperties": False}
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": False,
+    }
 
 
 _SPECS: list[ToolSpec] = [
     ToolSpec(
         "get_job",
         "Look up one translation job by its reference, for example TJ48213. Use when the person names a job.",
-        _schema({"job_id": {"type": "string", "description": "Job reference. Digits alone are accepted."}}, ["job_id"]),
+        _schema(
+            {
+                "job_id": {
+                    "type": "string",
+                    "description": "Job reference. Digits alone are accepted.",
+                }
+            },
+            ["job_id"],
+        ),
         "lookup",
     ),
     ToolSpec(
@@ -32,7 +52,12 @@ _SPECS: list[ToolSpec] = [
         "List the person's translation jobs. Use for questions such as where is my job, what is waiting on me, "
         "or what is in progress.",
         _schema(
-            {"filter": {"type": "string", "enum": ["open", "waiting_on_me", "delivered", "all"]}},
+            {
+                "filter": {
+                    "type": "string",
+                    "enum": ["open", "waiting_on_me", "delivered", "all"],
+                }
+            },
             ["filter"],
         ),
         "lookup",
@@ -50,8 +75,14 @@ _SPECS: list[ToolSpec] = [
         "translate the text yourself and you never see the thread contents.",
         _schema(
             {
-                "target_language": {"type": "string", "description": "Language code such as ja, de, pt-BR."},
-                "text": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Text the person typed for translation."},
+                "target_language": {
+                    "type": "string",
+                    "description": "Language code such as ja, de, pt-BR.",
+                },
+                "text": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "description": "Text the person typed for translation.",
+                },
                 "use_current_thread": {"type": "boolean"},
             },
             ["target_language", "text", "use_current_thread"],
@@ -80,7 +111,10 @@ _SPECS: list[ToolSpec] = [
         _schema(
             {
                 "target_language": {"type": "string"},
-                "message_ts": {"type": "string", "description": "Timestamp of the channel message to translate."},
+                "message_ts": {
+                    "type": "string",
+                    "description": "Timestamp of the channel message to translate.",
+                },
             },
             ["target_language", "message_ts"],
         ),
@@ -99,14 +133,25 @@ _SPECS: list[ToolSpec] = [
     ToolSpec(
         "set_digest",
         "Turn the person's job digest on or off.",
-        _schema({"frequency": {"type": "string", "enum": ["off", "daily", "weekly"]}}, ["frequency"]),
+        _schema(
+            {"frequency": {"type": "string", "enum": ["off", "daily", "weekly"]}},
+            ["frequency"],
+        ),
         "lookup",
     ),
     ToolSpec(
         "explain",
         "Fetch the app's approved help text on a topic. Use it before answering questions about what Arbitr "
         "can do or how to get started.",
-        _schema({"topic": {"type": "string", "enum": ["capabilities", "getting_started", "pricing", "privacy"]}}, ["topic"]),
+        _schema(
+            {
+                "topic": {
+                    "type": "string",
+                    "enum": ["capabilities", "getting_started", "pricing", "privacy"],
+                }
+            },
+            ["topic"],
+        ),
         "lookup",
     ),
 ]
@@ -122,11 +167,22 @@ class ToolRegistry:
 
     def specs_for(self, can_see_quotes: bool) -> list[ToolSpec]:
         """Tools offered to the model. A person who cannot see quotes is never offered the quote tool."""
-        return [s for s in self._specs.values() if can_see_quotes or s.name != "request_document_quote"]
-
-    def as_anthropic_tools(self, specs: list[ToolSpec] | None = None) -> list[dict[str, Any]]:
         return [
-            {"name": s.name, "description": s.description, "input_schema": s.input_schema, "strict": True}
+            s
+            for s in self._specs.values()
+            if can_see_quotes or s.name != "request_document_quote"
+        ]
+
+    def as_anthropic_tools(
+        self, specs: list[ToolSpec] | None = None
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": s.name,
+                "description": s.description,
+                "input_schema": s.input_schema,
+                "strict": True,
+            }
             for s in (specs if specs is not None else self.specs())
         ]
 

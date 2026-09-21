@@ -6,7 +6,14 @@ import pathlib
 
 CORE = pathlib.Path(__file__).parents[2] / "app" / "agent" / "core"
 ALLOWED_PREFIX = "app.agent.core"
-PRIVATE = ("straker_utils", "straker_auth", "ray_sdk", "ray_logger", "buglog", "ibm_watson")
+PRIVATE = (
+    "straker_utils",
+    "straker_auth",
+    "ray_sdk",
+    "ray_logger",
+    "buglog",
+    "ibm_watson",
+)
 
 
 def _imports(path: pathlib.Path):
@@ -25,7 +32,8 @@ def test_core_never_imports_the_rest_of_the_app():
         f"{py.name}: {name}"
         for py in CORE.rglob("*.py")
         for name in _imports(py)
-        if name == "app" or (name.startswith("app.") and not name.startswith(ALLOWED_PREFIX))
+        if name == "app"
+        or (name.startswith("app.") and not name.startswith(ALLOWED_PREFIX))
     ]
     assert offenders == []
 

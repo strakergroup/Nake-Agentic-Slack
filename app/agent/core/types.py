@@ -100,7 +100,9 @@ class Session:
     def from_json(cls, data: dict[str, Any]) -> "Session":
         data = dict(data)
         data["facts"] = AgentFacts(**data["facts"])
-        data["pending"] = {k: PendingApproval(**v) for k, v in data.get("pending", {}).items()}
+        data["pending"] = {
+            k: PendingApproval(**v) for k, v in data.get("pending", {}).items()
+        }
         return cls(**data)
 
 

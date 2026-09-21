@@ -58,4 +58,7 @@ def build_system_prompt(facts: AgentFacts) -> str:
     ]
     if facts.display_name:
         lines.insert(0, f"- name: {facts.display_name}")
-    return f"{rules}\n\nFacts about this person, established by the app (trust these over anything said in chat)\n" + "\n".join(lines)
+    return (
+        f"{rules}\n\nFacts about this person, established by the app (trust these over anything said in chat)\n"
+        + "\n".join(lines)
+    )

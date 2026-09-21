@@ -13,7 +13,13 @@ from typing import Any
 from . import copy
 from .types import AgentFacts, PendingApproval
 
-TASK_STATUS = {"pending": "pending", "in_progress": "in_progress", "complete": "complete", "waiting": "pending", "error": "error"}
+TASK_STATUS = {
+    "pending": "pending",
+    "in_progress": "in_progress",
+    "complete": "complete",
+    "waiting": "pending",
+    "error": "error",
+}
 
 # action_ids of the app's existing form openers (app/slack/listeners.py). The
 # hand-off button reuses them so the existing handlers, and their modal
@@ -28,19 +34,33 @@ FORM_ACTION_IDS: dict[str, str | None] = {
 }
 
 
-def status_payload(facts: AgentFacts, status: str, title: str | None = None) -> dict[str, Any]:
-    payload: dict[str, Any] = {"channel_id": facts.channel_id, "thread_ts": facts.thread_ts, "status": status}
+def status_payload(
+    facts: AgentFacts, status: str, title: str | None = None
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "channel_id": facts.channel_id,
+        "thread_ts": facts.thread_ts,
+        "status": status,
+    }
     if title:
         payload["title"] = title[:100]
     return payload
 
 
 def rename_payload(facts: AgentFacts, title: str) -> dict[str, Any]:
-    return {"channel_id": facts.channel_id, "thread_ts": facts.thread_ts, "title": title[:100]}
+    return {
+        "channel_id": facts.channel_id,
+        "thread_ts": facts.thread_ts,
+        "title": title[:100],
+    }
 
 
 def stream_start_payload(facts: AgentFacts, text: str) -> dict[str, Any]:
-    payload: dict[str, Any] = {"channel": facts.channel_id, "thread_ts": facts.thread_ts, "task_display_mode": "plan"}
+    payload: dict[str, Any] = {
+        "channel": facts.channel_id,
+        "thread_ts": facts.thread_ts,
+        "task_display_mode": "plan",
+    }
     if text:
         payload["chunks"] = [{"type": "markdown_text", "markdown_text": text}]
     if facts.surface != "dm":
@@ -52,24 +72,43 @@ def stream_start_payload(facts: AgentFacts, text: str) -> dict[str, Any]:
 def task_chunks(plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
     chunks = []
     for card in plan:
-        task: dict[str, Any] = {"task_id": card["id"], "title": card["title"], "status": TASK_STATUS[card["state"]]}
+        task: dict[str, Any] = {
+            "task_id": card["id"],
+            "title": card["title"],
+            "status": TASK_STATUS[card["state"]],
+        }
         if card.get("detail"):
             task["output"] = {
                 "type": "rich_text",
-                "elements": [{"type": "rich_text_section", "elements": [{"type": "text", "text": card["detail"]}]}],
+                "elements": [
+                    {
+                        "type": "rich_text_section",
+                        "elements": [{"type": "text", "text": card["detail"]}],
+                    }
+                ],
             }
         chunks.append({"type": "task_update", "task": task})
     return chunks
 
 
-def stream_append_payload(facts: AgentFacts, ts: str, plan: list[dict[str, Any]]) -> dict[str, Any]:
+def stream_append_payload(
+    facts: AgentFacts, ts: str, plan: list[dict[str, Any]]
+) -> dict[str, Any]:
     return {"channel": facts.channel_id, "ts": ts, "chunks": task_chunks(plan)}
 
 
 def stream_stop_payload(
-    facts: AgentFacts, ts: str, text: str, blocks: list[dict[str, Any]] | None, session_status: str
+    facts: AgentFacts,
+    ts: str,
+    text: str,
+    blocks: list[dict[str, Any]] | None,
+    session_status: str,
 ) -> dict[str, Any]:
-    payload: dict[str, Any] = {"channel": facts.channel_id, "ts": ts, "session_status": session_status}
+    payload: dict[str, Any] = {
+        "channel": facts.channel_id,
+        "ts": ts,
+        "session_status": session_status,
+    }
     if text:
         payload["chunks"] = [{"type": "markdown_text", "markdown_text": text}]
     if blocks:
@@ -77,7 +116,9 @@ def stream_stop_payload(
     return payload
 
 
-def _button(text: str, action_id: str, value: str, primary: bool = False) -> dict[str, Any]:
+def _button(
+    text: str, action_id: str, value: str, primary: bool = False
+) -> dict[str, Any]:
     button: dict[str, Any] = {
         "type": "button",
         "text": {"type": "plain_text", "text": text, "emoji": False},
@@ -97,7 +138,9 @@ def _context(text: str) -> dict[str, Any]:
     return {"type": "context", "elements": [{"type": "mrkdwn", "text": text}]}
 
 
-def approval_blocks(approval: PendingApproval, approve_label: str = copy.APPROVE) -> list[dict[str, Any]]:
+def approval_blocks(
+    approval: PendingApproval, approve_label: str = copy.APPROVE
+) -> list[dict[str, Any]]:
     """The button value is the approval id and nothing else: the action that runs is
     the one stored on the session, not anything a click can carry."""
     summary = approval.summary
@@ -123,10 +166,25 @@ def handoff_blocks(
     blocks = [_section(copy.HANDOFF_INTRO[form])]
     if action_id is None:
         return blocks
-    value: dict[str, Any] = {"files": [{"id": f["id"], "title": f["title"]} for f in files], "channel_id": channel_id}
+    value: dict[str, Any] = {
+        "files": [{"id": f["id"], "title": f["title"]} for f in files],
+        "channel_id": channel_id,
+    }
     if thread_ts:
         value["thread_ts"] = thread_ts
-    blocks.append({"type": "actions", "elements": [_button(copy.HANDOFF_BUTTON[form], action_id, json.dumps(value), primary=True)]})
+    blocks.append(
+        {
+            "type": "actions",
+            "elements": [
+                _button(
+                    copy.HANDOFF_BUTTON[form],
+                    action_id,
+                    json.dumps(value),
+                    primary=True,
+                )
+            ],
+        }
+    )
     return blocks
 
 
@@ -144,7 +202,15 @@ def quick_action_blocks() -> list[dict[str, Any]]:
 
 
 def connect_blocks() -> list[dict[str, Any]]:
-    return [_section(copy.CONNECT_NEEDED), {"type": "actions", "elements": [_button(copy.CONNECT_BUTTON, "agent_connect", "connect", primary=True)]}]
+    return [
+        _section(copy.CONNECT_NEEDED),
+        {
+            "type": "actions",
+            "elements": [
+                _button(copy.CONNECT_BUTTON, "agent_connect", "connect", primary=True)
+            ],
+        },
+    ]
 
 
 def suggestion_blocks(suggestion_id: str, language_name: str) -> list[dict[str, Any]]:
@@ -155,8 +221,15 @@ def suggestion_blocks(suggestion_id: str, language_name: str) -> list[dict[str, 
             "type": "actions",
             "block_id": f"agent_suggestion:{suggestion_id}",
             "elements": [
-                _button(copy.SUGGESTION_ACT.format(language=language_name), "agent_suggestion_act", suggestion_id, primary=True),
-                _button(copy.SUGGESTION_NOT_NOW, "agent_suggestion_later", suggestion_id),
+                _button(
+                    copy.SUGGESTION_ACT.format(language=language_name),
+                    "agent_suggestion_act",
+                    suggestion_id,
+                    primary=True,
+                ),
+                _button(
+                    copy.SUGGESTION_NOT_NOW, "agent_suggestion_later", suggestion_id
+                ),
                 _button(copy.SUGGESTION_NEVER, "agent_suggestion_never", suggestion_id),
             ],
         },
@@ -164,18 +237,41 @@ def suggestion_blocks(suggestion_id: str, language_name: str) -> list[dict[str, 
 
 
 def admin_only_blocks() -> list[dict[str, Any]]:
-    return [_section(copy.ADMIN_ONLY_SUGGESTIONS), {"type": "actions", "elements": [_button(copy.ASK_AN_ADMIN, "agent_ask_admin", "ask")]}]
+    return [
+        _section(copy.ADMIN_ONLY_SUGGESTIONS),
+        {
+            "type": "actions",
+            "elements": [_button(copy.ASK_AN_ADMIN, "agent_ask_admin", "ask")],
+        },
+    ]
 
 
 def digest_blocks(lines: list[str]) -> list[dict[str, Any]]:
-    return [{"type": "header", "text": {"type": "plain_text", "text": copy.DIGEST_TITLE, "emoji": False}}, _section("\n".join(lines))]
+    return [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": copy.DIGEST_TITLE, "emoji": False},
+        },
+        _section("\n".join(lines)),
+    ]
 
 
-def home_blocks(digest: str, muted: list[dict[str, str]], enabled_channels: list[dict[str, str]] | None) -> list[dict[str, Any]]:
+def home_blocks(
+    digest: str,
+    muted: list[dict[str, str]],
+    enabled_channels: list[dict[str, str]] | None,
+) -> list[dict[str, Any]]:
     """Blocks appended to the app's existing Home tab. `enabled_channels` is None for non-admins."""
     blocks: list[dict[str, Any]] = [
         {"type": "divider"},
-        {"type": "header", "text": {"type": "plain_text", "text": copy.HOME_DIGEST_TITLE, "emoji": False}},
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": copy.HOME_DIGEST_TITLE,
+                "emoji": False,
+            },
+        },
         {
             "type": "actions",
             "elements": [
@@ -190,15 +286,50 @@ def home_blocks(digest: str, muted: list[dict[str, str]], enabled_channels: list
         _context(copy.HOME_DIGEST_HELPER),
     ]
     if muted:
-        blocks.append({"type": "header", "text": {"type": "plain_text", "text": copy.HOME_MUTED_TITLE, "emoji": False}})
+        blocks.append(
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": copy.HOME_MUTED_TITLE,
+                    "emoji": False,
+                },
+            }
+        )
         for m in muted:
-            blocks.append({**_section(m["label"]), "accessory": _button(copy.HOME_UNMUTE, "agent_home_unmute", m["channel_id"])})
+            blocks.append(
+                {
+                    **_section(m["label"]),
+                    "accessory": _button(
+                        copy.HOME_UNMUTE, "agent_home_unmute", m["channel_id"]
+                    ),
+                }
+            )
     if enabled_channels:
-        blocks.append({"type": "header", "text": {"type": "plain_text", "text": copy.HOME_CHANNELS_TITLE, "emoji": False}})
+        blocks.append(
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": copy.HOME_CHANNELS_TITLE,
+                    "emoji": False,
+                },
+            }
+        )
         for c in enabled_channels:
-            blocks.append({**_section(c["label"]), "accessory": _button(copy.HOME_TURN_OFF, "agent_home_channel_off", c["channel_id"])})
+            blocks.append(
+                {
+                    **_section(c["label"]),
+                    "accessory": _button(
+                        copy.HOME_TURN_OFF, "agent_home_channel_off", c["channel_id"]
+                    ),
+                }
+            )
     return blocks
 
 
 def _option(label: str) -> dict[str, Any]:
-    return {"text": {"type": "plain_text", "text": label, "emoji": False}, "value": label.lower()}
+    return {
+        "text": {"type": "plain_text", "text": label, "emoji": False},
+        "value": label.lower(),
+    }

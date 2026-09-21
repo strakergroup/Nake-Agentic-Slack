@@ -23,7 +23,9 @@ LOCK_TTL = 120
 MAX_MESSAGES = 60
 
 
-def trim_history(messages: list[dict[str, Any]], limit: int = MAX_MESSAGES) -> list[dict[str, Any]]:
+def trim_history(
+    messages: list[dict[str, Any]], limit: int = MAX_MESSAGES
+) -> list[dict[str, Any]]:
     """Drop the oldest messages, never splitting a tool_use from its tool_result.
 
     A safe cut point is a user message that carries no tool_result blocks.
@@ -37,7 +39,10 @@ def trim_history(messages: list[dict[str, Any]], limit: int = MAX_MESSAGES) -> l
         content = message.get("content")
         if isinstance(content, str):
             return True
-        return not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content or [])
+        return not any(
+            isinstance(b, dict) and b.get("type") == "tool_result"
+            for b in content or []
+        )
 
     for index in range(len(messages) - limit, len(messages)):
         if starts_clean(messages[index]):
@@ -51,8 +56,12 @@ class SessionStore(Protocol):
     async def claim_turn(self, event_id: str) -> bool: ...
     async def link_quote(self, quote_id: str, session_key: str) -> None: ...
     async def session_for_quote(self, quote_id: str) -> str | None: ...
-    async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None: ...
-    async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None: ...
+    async def remember_open(
+        self, team_id: str, channel_id: str, user_id: str, session_key: str
+    ) -> None: ...
+    async def session_for_channel_user(
+        self, team_id: str, channel_id: str, user_id: str
+    ) -> str | None: ...
     async def request_stop(self, key: str) -> None: ...
     async def stop_requested(self, key: str) -> bool: ...
     async def clear_stop(self, key: str) -> None: ...
@@ -88,10 +97,14 @@ class InMemorySessionStore:
     async def session_for_quote(self, quote_id: str) -> str | None:
         return self._quotes.get(quote_id)
 
-    async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None:
+    async def remember_open(
+        self, team_id: str, channel_id: str, user_id: str, session_key: str
+    ) -> None:
         self._open[f"{team_id}:{channel_id}:{user_id}"] = session_key
 
-    async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None:
+    async def session_for_channel_user(
+        self, team_id: str, channel_id: str, user_id: str
+    ) -> str | None:
         return self._open.get(f"{team_id}:{channel_id}:{user_id}")
 
     async def request_stop(self, key: str) -> None:
@@ -126,10 +139,16 @@ class RedisSessionStore:
 
     async def save(self, session: Session) -> None:
         session.messages = trim_history(session.messages)
-        await self._redis.set(f"{PREFIX}session:{session.key}", json.dumps(session.to_json()), ex=SESSION_TTL)
+        await self._redis.set(
+            f"{PREFIX}session:{session.key}",
+            json.dumps(session.to_json()),
+            ex=SESSION_TTL,
+        )
 
     async def claim_turn(self, event_id: str) -> bool:
-        return bool(await self._redis.set(f"{PREFIX}turn:{event_id}", "1", nx=True, ex=TURN_TTL))
+        return bool(
+            await self._redis.set(f"{PREFIX}turn:{event_id}", "1", nx=True, ex=TURN_TTL)
+        )
 
     async def link_quote(self, quote_id: str, session_key: str) -> None:
         await self._redis.set(f"{PREFIX}quote:{quote_id}", session_key, ex=QUOTE_TTL)
@@ -137,11 +156,21 @@ class RedisSessionStore:
     async def session_for_quote(self, quote_id: str) -> str | None:
         return _text(await self._redis.get(f"{PREFIX}quote:{quote_id}"))
 
-    async def remember_open(self, team_id: str, channel_id: str, user_id: str, session_key: str) -> None:
-        await self._redis.set(f"{PREFIX}open:{team_id}:{channel_id}:{user_id}", session_key, ex=SESSION_TTL)
+    async def remember_open(
+        self, team_id: str, channel_id: str, user_id: str, session_key: str
+    ) -> None:
+        await self._redis.set(
+            f"{PREFIX}open:{team_id}:{channel_id}:{user_id}",
+            session_key,
+            ex=SESSION_TTL,
+        )
 
-    async def session_for_channel_user(self, team_id: str, channel_id: str, user_id: str) -> str | None:
-        return _text(await self._redis.get(f"{PREFIX}open:{team_id}:{channel_id}:{user_id}"))
+    async def session_for_channel_user(
+        self, team_id: str, channel_id: str, user_id: str
+    ) -> str | None:
+        return _text(
+            await self._redis.get(f"{PREFIX}open:{team_id}:{channel_id}:{user_id}")
+        )
 
     async def request_stop(self, key: str) -> None:
         await self._redis.set(f"{PREFIX}stop:{key}", "1", ex=TURN_TTL)
@@ -153,7 +182,9 @@ class RedisSessionStore:
         await self._redis.delete(f"{PREFIX}stop:{key}")
 
     def lock(self, key: str) -> Any:
-        return self._redis.lock(f"{PREFIX}lock:{key}", timeout=LOCK_TTL, blocking_timeout=30)
+        return self._redis.lock(
+            f"{PREFIX}lock:{key}", timeout=LOCK_TTL, blocking_timeout=30
+        )
 
 
 def _text(value: Any) -> str | None:

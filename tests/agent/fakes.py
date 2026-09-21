@@ -21,9 +21,18 @@ class FixedClock:
 
 def make_facts(**overrides: Any) -> AgentFacts:
     base: dict[str, Any] = dict(
-        user_id="U_MIKA", team_id="T1", channel_id="D1", enterprise_id=None, thread_ts="111.222",
-        locale="en-US", is_connected=True, can_see_quotes=True, is_ibm=False,
-        is_workspace_admin=False, surface="dm", display_name="Mika Kato",
+        user_id="U_MIKA",
+        team_id="T1",
+        channel_id="D1",
+        enterprise_id=None,
+        thread_ts="111.222",
+        locale="en-US",
+        is_connected=True,
+        can_see_quotes=True,
+        is_ibm=False,
+        is_workspace_admin=False,
+        surface="dm",
+        display_name="Mika Kato",
     )
     base.update(overrides)
     return AgentFacts(**base)
@@ -56,10 +65,22 @@ class RecordingSlack:
         return f"ts-{self._ts}"
 
     async def stream_tasks(self, facts, ts, plan):
-        self.calls.append(("stream_tasks", {"ts": ts, "plan": [dict(card) for card in plan]}))
+        self.calls.append(
+            ("stream_tasks", {"ts": ts, "plan": [dict(card) for card in plan]})
+        )
 
     async def stream_stop(self, facts, ts, text, blocks, session_status):
-        self.calls.append(("stream_stop", {"ts": ts, "text": text, "blocks": blocks, "session_status": session_status}))
+        self.calls.append(
+            (
+                "stream_stop",
+                {
+                    "ts": ts,
+                    "text": text,
+                    "blocks": blocks,
+                    "session_status": session_status,
+                },
+            )
+        )
 
     async def post(self, facts, text, blocks=None):
         self.calls.append(("post", {"text": text, "blocks": blocks}))
@@ -78,7 +99,9 @@ class ScriptedLlm:
     async def step(self, system, tools, messages):
         import copy as _copy
 
-        self.requests.append({"system": system, "tools": tools, "messages": _copy.deepcopy(messages)})
+        self.requests.append(
+            {"system": system, "tools": tools, "messages": _copy.deepcopy(messages)}
+        )
         if not self._steps:
             raise AssertionError("ScriptedLlm ran out of steps")
         step = self._steps.pop(0)

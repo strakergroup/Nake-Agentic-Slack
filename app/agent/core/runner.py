@@ -39,7 +39,10 @@ _IBM_FORBIDDEN = re.compile(
     r"\b(connect(ing)? (your|an|the) account|top[ -]?up|purchase|buy (more )?(tokens|credits)|your balance|AI tokens)\b",
     re.I,
 )
-_AMOUNT = re.compile(r"(\b(USD|EUR|GBP|NZD|AUD|JPY)\s?\d|[$€£¥]\s?\d|\b\d+(\.\d+)?\s?(credits|tokens)\b)", re.I)
+_AMOUNT = re.compile(
+    r"(\b(USD|EUR|GBP|NZD|AUD|JPY)\s?\d|[$€£¥]\s?\d|\b\d+(\.\d+)?\s?(credits|tokens)\b)",
+    re.I,
+)
 
 _CARDS: dict[str, str] = {
     "get_job": copy.CARD_LOOKUP_JOBS,
@@ -52,14 +55,27 @@ _CARDS: dict[str, str] = {
 
 
 class SlackPort(Protocol):
-    async def set_status(self, facts: AgentFacts, status: str, title: str | None = None) -> None: ...
-    async def stream_start(self, facts: AgentFacts, text: str) -> str: ...
-    async def stream_tasks(self, facts: AgentFacts, ts: str, plan: list[dict[str, Any]]) -> None: ...
-    async def stream_stop(
-        self, facts: AgentFacts, ts: str, text: str, blocks: list[dict[str, Any]] | None, session_status: str
+    async def set_status(
+        self, facts: AgentFacts, status: str, title: str | None = None
     ) -> None: ...
-    async def post(self, facts: AgentFacts, text: str, blocks: list[dict[str, Any]] | None = None) -> None: ...
-    async def post_private(self, facts: AgentFacts, text: str, blocks: list[dict[str, Any]] | None = None) -> None: ...
+    async def stream_start(self, facts: AgentFacts, text: str) -> str: ...
+    async def stream_tasks(
+        self, facts: AgentFacts, ts: str, plan: list[dict[str, Any]]
+    ) -> None: ...
+    async def stream_stop(
+        self,
+        facts: AgentFacts,
+        ts: str,
+        text: str,
+        blocks: list[dict[str, Any]] | None,
+        session_status: str,
+    ) -> None: ...
+    async def post(
+        self, facts: AgentFacts, text: str, blocks: list[dict[str, Any]] | None = None
+    ) -> None: ...
+    async def post_private(
+        self, facts: AgentFacts, text: str, blocks: list[dict[str, Any]] | None = None
+    ) -> None: ...
 
 
 class _Turn:
@@ -99,7 +115,11 @@ class AgentRunner:
     # ------------------------------------------------------------------ entry points
 
     async def handle_message(
-        self, facts: AgentFacts, text: str, event_id: str, files: list[dict[str, Any]] | None = None
+        self,
+        facts: AgentFacts,
+        text: str,
+        event_id: str,
+        files: list[dict[str, Any]] | None = None,
     ) -> None:
         if not await self._store.claim_turn(event_id):
             return
@@ -110,18 +130,26 @@ class AgentRunner:
             session.facts = facts
             session.stopped = False
             await self._store.clear_stop(key)
-            session.messages.append({"role": "user", "content": _user_content(text, files)})
-            await self._store.remember_open(facts.team_id, facts.channel_id, facts.user_id, key)
+            session.messages.append(
+                {"role": "user", "content": _user_content(text, files)}
+            )
+            await self._store.remember_open(
+                facts.team_id, facts.channel_id, facts.user_id, key
+            )
             turn = _Turn(self._clock())
             if is_new:
                 session.title = _title(text)
-            await self._slack.set_status(facts, "processing", session.title if is_new else None)
+            await self._slack.set_status(
+                facts, "processing", session.title if is_new else None
+            )
             session.status = "processing"
             await self._reason(session, turn)
             await self._store.save(session)
             self._record(session, turn)
 
-    async def handle_approval(self, facts: AgentFacts, approval_id: str, clicked_by: str, approved: bool) -> None:
+    async def handle_approval(
+        self, facts: AgentFacts, approval_id: str, clicked_by: str, approved: bool
+    ) -> None:
         key = session_key(facts)
         async with self._store.lock(key):
             session = await self._store.load(key)
@@ -140,8 +168,12 @@ class AgentRunner:
                 return
 
             if not approved:
-                self._card(session, copy.CARD_APPROVAL, "complete", copy.CARD_DETAIL_DECLINED)
-                self._note(session, f"The person declined: {approval.summary}", copy.DECLINED)
+                self._card(
+                    session, copy.CARD_APPROVAL, "complete", copy.CARD_DETAIL_DECLINED
+                )
+                self._note(
+                    session, f"The person declined: {approval.summary}", copy.DECLINED
+                )
                 await self._slack.post(session.facts, copy.DECLINED)
                 session.status = "suspended" if session.pending else "active"
                 await self._slack.set_status(session.facts, session.status)
@@ -151,11 +183,18 @@ class AgentRunner:
 
             await self._slack.set_status(session.facts, "processing")
             session.status = "processing"
-            self._card(session, copy.CARD_APPROVAL, "complete", f"Approved by {session.facts.display_name or clicked_by}")
+            self._card(
+                session,
+                copy.CARD_APPROVAL,
+                "complete",
+                f"Approved by {session.facts.display_name or clicked_by}",
+            )
             self._card(session, copy.CARD_POST, "in_progress", "")
             turn.tools.append(approval.tool)
             try:
-                outcome = await self._tools.handler_for(approval.tool)(session.facts, approval.tool_input)
+                outcome = await self._tools.handler_for(approval.tool)(
+                    session.facts, approval.tool_input
+                )
             except Exception:
                 logger.exception("approved tool failed", extra={"tool": approval.tool})
                 outcome = ToolOutcome(content="failed", is_error=True)
@@ -164,9 +203,14 @@ class AgentRunner:
                 turn.outcome, turn.error_type = "failure", "tool_error"
                 await self._finish_plain(session, copy.FALLBACK_TOOL_FAILED, None)
             else:
-                self._card(session, copy.CARD_POST, "complete", outcome.card_detail or "")
+                self._card(
+                    session, copy.CARD_POST, "complete", outcome.card_detail or ""
+                )
                 session.messages.append(
-                    {"role": "user", "content": f"[app note] The person approved: {approval.summary}. Result: {outcome.content}"}
+                    {
+                        "role": "user",
+                        "content": f"[app note] The person approved: {approval.summary}. Result: {outcome.content}",
+                    }
                 )
                 await self._reason(session, turn)
             await self._store.save(session)
@@ -183,25 +227,42 @@ class AgentRunner:
             self._gate.cancel_all(session)
             for card in session.plan:
                 if card["state"] in ("pending", "waiting", "in_progress"):
-                    card["state"], card["detail"] = "complete", copy.CARD_DETAIL_DECLINED
+                    card["state"], card["detail"] = (
+                        "complete",
+                        copy.CARD_DETAIL_DECLINED,
+                    )
             session.status = "active"
             await self._slack.post(session.facts, copy.STOPPED)
             await self._slack.set_status(session.facts, "active")
             await self._store.save(session)
 
-    async def handle_backend_event(self, key: str, kind: str, detail: str | None = None) -> None:
+    async def handle_backend_event(
+        self, key: str, kind: str, detail: str | None = None
+    ) -> None:
         """The app's services reported back. `kind` is quote_ready or delivered."""
         async with self._store.lock(key):
             session = await self._store.load(key)
             if session is None:
                 return
             if kind == "quote_ready":
-                self._card(session, copy.CARD_PRICE, "complete", detail or copy.CARD_DETAIL_QUOTE_READY)
-                self._card(session, copy.CARD_APPROVAL, "waiting", copy.CARD_DETAIL_WAITING)
+                self._card(
+                    session,
+                    copy.CARD_PRICE,
+                    "complete",
+                    detail or copy.CARD_DETAIL_QUOTE_READY,
+                )
+                self._card(
+                    session, copy.CARD_APPROVAL, "waiting", copy.CARD_DETAIL_WAITING
+                )
                 session.status = "suspended"
             elif kind == "delivered":
                 self._card(session, copy.CARD_APPROVAL, "complete", "")
-                self._card(session, copy.CARD_DELIVER, "complete", detail or copy.CARD_DETAIL_DELIVERED)
+                self._card(
+                    session,
+                    copy.CARD_DELIVER,
+                    "complete",
+                    detail or copy.CARD_DETAIL_DELIVERED,
+                )
                 session.status = "active"
             else:
                 return
@@ -224,12 +285,18 @@ class AgentRunner:
                 step = await self._llm.step(system, specs, session.messages)
             except LlmUnavailable:
                 turn.outcome, turn.error_type = "failure", "llm_error"
-                await self._finish_plain(session, copy.FALLBACK_MODEL_DOWN, slack_ui.quick_action_blocks())
+                await self._finish_plain(
+                    session, copy.FALLBACK_MODEL_DOWN, slack_ui.quick_action_blocks()
+                )
                 return
             except LlmRequestError:
-                logger.exception("model rejected the request", extra={"session": session.key})
+                logger.exception(
+                    "model rejected the request", extra={"session": session.key}
+                )
                 turn.outcome, turn.error_type = "failure", "validation_error"
-                await self._finish_plain(session, copy.FALLBACK_MODEL_DOWN, slack_ui.quick_action_blocks())
+                await self._finish_plain(
+                    session, copy.FALLBACK_MODEL_DOWN, slack_ui.quick_action_blocks()
+                )
                 return
 
             turn.input_tokens += step.input_tokens
@@ -249,10 +316,17 @@ class AgentRunner:
             for call in step.tool_calls:
                 results.append(await self._run_call(session, turn, call))
                 if turn.tool_failures >= 2:
-                    session.messages.append({"role": "user", "content": results + _unanswered(step.tool_calls, results)})
+                    session.messages.append(
+                        {
+                            "role": "user",
+                            "content": results + _unanswered(step.tool_calls, results),
+                        }
+                    )
                     turn.outcome, turn.error_type = "failure", "tool_error"
                     _say(session, copy.FALLBACK_TOOL_FAILED)
-                    await self._finish(session, turn, copy.FALLBACK_TOOL_FAILED, disclaim=False)
+                    await self._finish(
+                        session, turn, copy.FALLBACK_TOOL_FAILED, disclaim=False
+                    )
                     return
             session.messages.append({"role": "user", "content": results})
 
@@ -260,22 +334,34 @@ class AgentRunner:
         _say(session, copy.FALLBACK_TOO_MANY_STEPS)
         await self._finish(session, turn, copy.FALLBACK_TOO_MANY_STEPS, disclaim=False)
 
-    async def _run_call(self, session: Session, turn: _Turn, call: ToolCall) -> dict[str, Any]:
+    async def _run_call(
+        self, session: Session, turn: _Turn, call: ToolCall
+    ) -> dict[str, Any]:
         facts = session.facts
         if not self._tools.is_known(call.name):
             return _result(call, f"Unknown tool: {call.name}", is_error=True)
         if call.name == "request_document_quote" and not facts.can_see_quotes:
-            return _result(call, "Not available for this person. Use offer_form with document_translation.", is_error=True)
+            return _result(
+                call,
+                "Not available for this person. Use offer_form with document_translation.",
+                is_error=True,
+            )
 
         if self._tools.is_gated(call.name):
             approval = self._gate.create(
-                session, call.name, call.input, requested_by=facts.user_id,
-                summary=copy.POST_PUBLICLY_PROMPT, tool_use_id=call.id,
+                session,
+                call.name,
+                call.input,
+                requested_by=facts.user_id,
+                summary=copy.POST_PUBLICLY_PROMPT,
+                tool_use_id=call.id,
             )
             self._card(session, copy.CARD_APPROVAL, "waiting", copy.CARD_DETAIL_WAITING)
             self._card(session, copy.CARD_POST, "pending", "")
             await self._show_plan(session, turn)
-            turn.extra_blocks.extend(slack_ui.approval_blocks(approval, copy.POST_PUBLICLY_APPROVE))
+            turn.extra_blocks.extend(
+                slack_ui.approval_blocks(approval, copy.POST_PUBLICLY_APPROVE)
+            )
             return _result(call, copy.WAITING_FOR_APPROVAL)
 
         turn.tools.append(call.name)
@@ -287,7 +373,10 @@ class AgentRunner:
             outcome = await self._tools.handler_for(call.name)(facts, call.input)
         except Exception:
             logger.exception("tool failed", extra={"tool": call.name})
-            outcome = ToolOutcome(content="The service did not respond. You may try once more.", is_error=True)
+            outcome = ToolOutcome(
+                content="The service did not respond. You may try once more.",
+                is_error=True,
+            )
         if outcome.is_error:
             turn.tool_failures += 1
             if card:
@@ -295,7 +384,12 @@ class AgentRunner:
         else:
             if card:
                 waiting = outcome.waits_for_backend
-                self._card(session, outcome.card or card, "in_progress" if waiting else "complete", outcome.card_detail or "")
+                self._card(
+                    session,
+                    outcome.card or card,
+                    "in_progress" if waiting else "complete",
+                    outcome.card_detail or "",
+                )
                 if call.name == "request_document_quote":
                     self._card(session, copy.CARD_APPROVAL, "pending", "")
                     self._card(session, copy.CARD_DELIVER, "pending", "")
@@ -307,7 +401,9 @@ class AgentRunner:
 
     # ------------------------------------------------------------------ output
 
-    async def _finish(self, session: Session, turn: _Turn, text: str, disclaim: bool) -> None:
+    async def _finish(
+        self, session: Session, turn: _Turn, text: str, disclaim: bool
+    ) -> None:
         facts = session.facts
         text, guarded = _guard(facts, text)
         if guarded:
@@ -319,9 +415,13 @@ class AgentRunner:
         blocks = turn.extra_blocks or None
         if turn.stream_ts is None:
             turn.stream_ts = await self._slack.stream_start(facts, "")
-        await self._slack.stream_stop(facts, turn.stream_ts, text, blocks, session.status)
+        await self._slack.stream_stop(
+            facts, turn.stream_ts, text, blocks, session.status
+        )
 
-    async def _finish_plain(self, session: Session, text: str, blocks: list[dict[str, Any]] | None) -> None:
+    async def _finish_plain(
+        self, session: Session, text: str, blocks: list[dict[str, Any]] | None
+    ) -> None:
         """Failure path: no streaming, fixed copy only."""
         session.status = "active"
         await self._slack.post(session.facts, text, blocks)
@@ -345,13 +445,22 @@ class AgentRunner:
             if card["title"] == title:
                 card["state"], card["detail"] = state, detail or card.get("detail", "")
                 return
-        session.plan.append({"id": f"c{len(session.plan) + 1}", "title": title, "state": state, "detail": detail})
+        session.plan.append(
+            {
+                "id": f"c{len(session.plan) + 1}",
+                "title": title,
+                "state": state,
+                "detail": detail,
+            }
+        )
 
     @staticmethod
     def _note(session: Session, note: str, reply: str) -> None:
         """Record an event in history while keeping user/assistant alternation."""
         session.messages.append({"role": "user", "content": f"[app note] {note}"})
-        session.messages.append({"role": "assistant", "content": [{"type": "text", "text": reply}]})
+        session.messages.append(
+            {"role": "assistant", "content": [{"type": "text", "text": reply}]}
+        )
 
     def _record(self, session: Session, turn: _Turn) -> None:
         self._audit.record(
@@ -373,7 +482,9 @@ class AgentRunner:
 
 def _say(session: Session, text: str) -> None:
     """Record a fixed reply so history keeps alternating user and assistant turns."""
-    session.messages.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
+    session.messages.append(
+        {"role": "assistant", "content": [{"type": "text", "text": text}]}
+    )
 
 
 def _user_content(text: str, files: list[dict[str, Any]] | None) -> str:
@@ -381,7 +492,8 @@ def _user_content(text: str, files: list[dict[str, Any]] | None) -> str:
     if not files:
         return text
     described = ", ".join(
-        f"{f.get('title') or f.get('name', 'file')} ({f.get('filetype', 'unknown type')}, {_size(f.get('size'))})" for f in files
+        f"{f.get('title') or f.get('name', 'file')} ({f.get('filetype', 'unknown type')}, {_size(f.get('size'))})"
+        for f in files
     )
     return f"{text}\n\n[attached files: {described}]".strip()
 
@@ -389,7 +501,11 @@ def _user_content(text: str, files: list[dict[str, Any]] | None) -> str:
 def _size(size: Any) -> str:
     if not isinstance(size, (int, float)) or size <= 0:
         return "size unknown"
-    return f"{size / 1_048_576:.1f} MB" if size >= 1_048_576 else f"{max(1, round(size / 1024))} KB"
+    return (
+        f"{size / 1_048_576:.1f} MB"
+        if size >= 1_048_576
+        else f"{max(1, round(size / 1024))} KB"
+    )
 
 
 def _title(text: str) -> str:
@@ -398,13 +514,19 @@ def _title(text: str) -> str:
 
 
 def _result(call: ToolCall, content: str, is_error: bool = False) -> dict[str, Any]:
-    result: dict[str, Any] = {"type": "tool_result", "tool_use_id": call.id, "content": content}
+    result: dict[str, Any] = {
+        "type": "tool_result",
+        "tool_use_id": call.id,
+        "content": content,
+    }
     if is_error:
         result["is_error"] = True
     return result
 
 
-def _unanswered(calls: list[ToolCall], results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _unanswered(
+    calls: list[ToolCall], results: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     """Every tool_use needs a tool_result, even when the turn is cut short."""
     done = {r["tool_use_id"] for r in results}
     return [_result(c, "Not run.", is_error=True) for c in calls if c.id not in done]

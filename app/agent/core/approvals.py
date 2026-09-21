@@ -47,7 +47,9 @@ class ApprovalGate:
         tool_use_id: str | None = None,
     ) -> PendingApproval:
         if not self._is_gated(tool):
-            raise ValueError(f"{tool} is not a gated tool; only gated tools get approvals")
+            raise ValueError(
+                f"{tool} is not a gated tool; only gated tools get approvals"
+            )
         now = self._clock()
         approval = PendingApproval(
             id=self._new_id(),
@@ -65,7 +67,9 @@ class ApprovalGate:
         session.pending[approval.id] = approval
         return approval
 
-    def verify(self, session: Session, approval_id: str, clicked_by: str) -> PendingApproval:
+    def verify(
+        self, session: Session, approval_id: str, clicked_by: str
+    ) -> PendingApproval:
         if approval_id in session.used_approvals:
             raise ApprovalError("already_used")
         if session.stopped:
@@ -79,14 +83,18 @@ class ApprovalGate:
             raise ApprovalError("expired")
         return approval
 
-    def consume(self, session: Session, approval_id: str, clicked_by: str) -> PendingApproval:
+    def consume(
+        self, session: Session, approval_id: str, clicked_by: str
+    ) -> PendingApproval:
         """Verify, then mark used. The returned copy is the only source of tool input."""
         approval = self.verify(session, approval_id, clicked_by)
         del session.pending[approval_id]
         session.used_approvals.append(approval_id)
         return approval
 
-    def decline(self, session: Session, approval_id: str, clicked_by: str) -> PendingApproval:
+    def decline(
+        self, session: Session, approval_id: str, clicked_by: str
+    ) -> PendingApproval:
         approval = self.verify(session, approval_id, clicked_by)
         del session.pending[approval_id]
         session.used_approvals.append(approval_id)

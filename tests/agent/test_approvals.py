@@ -11,8 +11,12 @@ def gate(clock=None, **kwargs):
 
 
 def create(g, session, **overrides):
-    args = dict(tool="post_translation_publicly", tool_input={"target_language": "ja"},
-                requested_by="U_MIKA", summary="Post in Japanese")
+    args = dict(
+        tool="post_translation_publicly",
+        tool_input={"target_language": "ja"},
+        requested_by="U_MIKA",
+        summary="Post in Japanese",
+    )
     args.update(overrides)
     return g.create(session, **args)
 
@@ -99,7 +103,9 @@ def test_consume_returns_the_stored_input_not_what_the_click_carried():
     original = {"target_language": "ja"}
     approval = create(g, session, tool_input=original)
     original["target_language"] = "tampered"
-    assert g.consume(session, approval.id, "U_MIKA").tool_input == {"target_language": "ja"}
+    assert g.consume(session, approval.id, "U_MIKA").tool_input == {
+        "target_language": "ja"
+    }
 
 
 def test_lookup_tools_cannot_get_approvals():
@@ -108,7 +114,9 @@ def test_lookup_tools_cannot_get_approvals():
 
 
 def test_hidden_amounts_never_leak():
-    approval = create(gate(), make_session(), show_amount=False, amount_text="USD 12.00")
+    approval = create(
+        gate(), make_session(), show_amount=False, amount_text="USD 12.00"
+    )
     assert approval.amount_text is None
 
 

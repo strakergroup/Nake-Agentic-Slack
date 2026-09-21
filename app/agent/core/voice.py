@@ -35,10 +35,15 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
             re.I,
         ),
     ),
-    ("off-limits-claim", re.compile(r"\b(trust scor(e|ing)|consensus voting|glass box)\b", re.I)),
+    (
+        "off-limits-claim",
+        re.compile(r"\b(trust scor(e|ing)|consensus voting|glass box)\b", re.I),
+    ),
     (
         "retired-name",
-        re.compile(r"\b(Straker\.AI|NotVerify|LanguageCloud|RAY Translate|Connect to Verify)\b"),
+        re.compile(
+            r"\b(Straker\.AI|NotVerify|LanguageCloud|RAY Translate|Connect to Verify)\b"
+        ),
     ),
 ]
 
