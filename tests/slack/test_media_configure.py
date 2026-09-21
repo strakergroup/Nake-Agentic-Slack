@@ -1,0 +1,799 @@
+"""Tests for Configure media modal view parsing."""
+
+from __future__ import annotations
+
+import json
+from unittest.mock import patch
+
+import pytest
+
+from app.media.media_workflow import MediaWorkflowType
+
+
+def _option(value: str, text: str = "") -> dict:
+    return {"value": value, "text": {"type": "plain_text", "text": text or value}}
+
+
+def _view(*, metadata: dict, values: dict) -> dict:
+    return {
+        "private_metadata": json.dumps(metadata),
+        "state": {"values": values},
+    }
+
+
+def _files() -> list[dict]:
+    return [{"file_id": "F1", "file_name": "clip.mp4"}]
+
+
+def test_parse_translate_selection_with_embed_and_review_flags():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _view(
+            metadata={
+                "channel_id": "C1",
+                "files": _files(),
+                "thread_ts": "1.2",
+                "show_embed_option": True,
+            },
+            values={
+                "workflow_type": {
+                    "video_configure_workflow_type": {
+                        "selected_option": _option("transcribe_translate"),
+                    }
+                },
+                "selected_file": {
+                    "file_display": {"selected_options": [_option("F1")]}
+                },
+                "target_languages": {
+                    "language_mt_options": {
+                        "selected_options": [
+                            _option("fr", "French"),
+                            _option("de", "German"),
+                        ]
+                    }
+                },
+                "embedding": {
+                    "embedding_options": {
+                        "selected_options": [
+                            _option("embed_source"),
+                            _option("embed_translated"),
+                        ]
+                    }
+                },
+            },
+        )
+    )
+    assert selection.workflow_type is MediaWorkflowType.TRANSCRIBE_TRANSLATE
+    assert selection.target_languages == ["fr", "de"]
+    assert selection.target_language_names == ["French", "German"]
+    assert selection.embed_source is True
+    assert selection.embed_translated is True
+    assert selection.review_gate is True
+    assert selection.files == _files()
+    assert selection.channel_id == "C1"
+    assert selection.thread_ts == "1.2"
+
+
+def test_parse_transcribe_only_clears_languages_and_translated_embed():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _view(
+            metadata={
+                "channel_id": "C1",
+                "files": _files(),
+                "show_embed_option": True,
+            },
+            values={
+                "workflow_type": {
+                    "video_configure_workflow_type": {
+                        "selected_option": _option("transcribe_only"),
+                    }
+                },
+                "selected_file": {
+                    "file_display": {"selected_options": [_option("F1")]}
+                },
+                "embedding": {
+                    "embedding_options": {
+                        "selected_options": [_option("embed_translated")]
+                    }
+                },
+            },
+        )
+    )
+    assert selection.workflow_type is MediaWorkflowType.TRANSCRIBE_ONLY
+    assert selection.target_languages == []
+    assert selection.embed_translated is False
+    assert selection.review_gate is False
+
+
+def test_parse_omitted_embedding_block_turns_review_off():
+    """Slack omits optional unchecked checkboxes from view.state.values."""
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _view(
+            metadata={
+                "channel_id": "C1",
+                "files": _files(),
+                "show_embed_option": True,
+            },
+            values={
+                "workflow_type": {
+                    "video_configure_workflow_type": {
+                        "selected_option": _option("transcribe_only"),
+                    }
+                },
+                "selected_file": {
+                    "file_display": {"selected_options": [_option("F1")]}
+                },
+            },
+        )
+    )
+    assert selection.review_gate is False
+    assert selection.embed_source is False
+
+
+def test_parse_source_embed_turns_review_on():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _view(
+            metadata={
+                "channel_id": "C1",
+                "files": _files(),
+                "show_embed_option": True,
+            },
+            values={
+                "workflow_type": {
+                    "video_configure_workflow_type": {
+                        "selected_option": _option("transcribe_only"),
+                    }
+                },
+                "selected_file": {
+                    "file_display": {"selected_options": [_option("F1")]}
+                },
+                "embedding": {
+                    "embedding_options": {"selected_options": [_option("embed_source")]}
+                },
+            },
+        )
+    )
+    assert selection.embed_source is True
+    assert selection.review_gate is True
+
+
+def test_parse_rejects_malformed_private_metadata():
+    from app.slack.media_configure import (
+        VideoConfigureMediaError,
+        parse_video_configure_media_view,
+    )
+
+    with pytest.raises(VideoConfigureMediaError):
+        parse_video_configure_media_view(
+            {"private_metadata": "{not-json", "state": {"values": {}}}
+        )
+
+
+def test_parse_requires_target_languages_for_translate():
+    from app.slack.media_configure import (
+        VideoConfigureMediaError,
+        parse_video_configure_media_view,
+    )
+
+    with pytest.raises(VideoConfigureMediaError):
+        parse_video_configure_media_view(
+            _view(
+                metadata={
+                    "channel_id": "C1",
+                    "files": _files(),
+                    "show_embed_option": True,
+                },
+                values={
+                    "workflow_type": {
+                        "video_configure_workflow_type": {
+                            "selected_option": _option("transcribe_translate"),
+                        }
+                    },
+                    "selected_file": {
+                        "file_display": {"selected_options": [_option("F1")]}
+                    },
+                    "target_languages": {
+                        "language_mt_options": {"selected_options": []}
+                    },
+                },
+            )
+        )
+
+
+def test_parse_requires_selected_files():
+    from app.slack.media_configure import (
+        VideoConfigureMediaError,
+        parse_video_configure_media_view,
+    )
+
+    with pytest.raises(VideoConfigureMediaError):
+        parse_video_configure_media_view(
+            _view(
+                metadata={
+                    "channel_id": "C1",
+                    "files": _files(),
+                    "show_embed_option": True,
+                },
+                values={
+                    "workflow_type": {
+                        "video_configure_workflow_type": {
+                            "selected_option": _option("transcribe_only"),
+                        }
+                    },
+                    "selected_file": {"file_display": {"selected_options": []}},
+                },
+            )
+        )
+
+
+def test_parse_audio_only_forces_embed_flags_off():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _view(
+            metadata={
+                "channel_id": "C1",
+                "files": _files(),
+                "show_embed_option": False,
+            },
+            values={
+                "workflow_type": {
+                    "video_configure_workflow_type": {
+                        "selected_option": _option("transcribe_translate"),
+                    }
+                },
+                "selected_file": {
+                    "file_display": {"selected_options": [_option("F1")]}
+                },
+                "target_languages": {
+                    "language_mt_options": {
+                        "selected_options": [_option("fr", "French")]
+                    }
+                },
+                "embedding": {
+                    "embedding_options": {"selected_options": [_option("embed_source")]}
+                },
+            },
+        )
+    )
+    assert selection.embed_source is False
+    assert selection.embed_translated is False
+    assert selection.review_gate is False
+
+
+def _word_view(*, word_values: dict) -> dict:
+    values = {
+        "workflow_type": {
+            "video_configure_workflow_type": {
+                "selected_option": _option("transcribe_only"),
+            }
+        },
+        "selected_file": {"file_display": {"selected_options": [_option("F1")]}},
+        **word_values,
+    }
+    return _view(
+        metadata={
+            "channel_id": "C1",
+            "files": _files(),
+            "show_embed_option": True,
+        },
+        values=values,
+    )
+
+
+def test_parse_word_transcript_select_speakers():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _word_view(
+            word_values={
+                "word_transcript": {
+                    "word_transcript_format": {"selected_option": _option("speakers")}
+                },
+            }
+        )
+    )
+    assert selection.word_transcript_format == "speakers"
+
+
+def test_parse_word_transcript_none_is_unset():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _word_view(
+            word_values={
+                "word_transcript": {
+                    "word_transcript_format": {"selected_option": _option("none")}
+                },
+            }
+        )
+    )
+    assert selection.word_transcript_format is None
+
+
+def test_parse_word_transcript_missing_select_is_unset():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(_word_view(word_values={}))
+    assert selection.word_transcript_format is None
+
+
+def test_parse_word_transcript_invalid_format_treated_as_none():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _word_view(
+            word_values={
+                "word_transcript": {
+                    "word_transcript_format": {"selected_option": _option("bogus")}
+                },
+            }
+        )
+    )
+    assert selection.word_transcript_format is None
+
+
+def test_configure_media_quote_fields_include_word_transcript_format_only_when_set():
+    from app.slack.media_configure import (
+        VideoConfigureMediaSelection,
+        configure_media_quote_fields,
+    )
+
+    def _selection(word_transcript_format: str | None) -> VideoConfigureMediaSelection:
+        return VideoConfigureMediaSelection(
+            workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
+            embed_source=False,
+            embed_translated=False,
+            review_gate=False,
+            target_languages=[],
+            target_language_names=[],
+            files=_files(),
+            channel_id="C1",
+            word_transcript_format=word_transcript_format,
+        )
+
+    with_format = configure_media_quote_fields(_selection("speakers"))
+    assert with_format["extra"]["word_transcript_format"] == "speakers"
+
+    without_format = configure_media_quote_fields(_selection(None))
+    assert "word_transcript_format" not in without_format["extra"]
+
+
+def test_configure_media_quote_fields_use_translate_pipeline_not_legacy_embed():
+    from app.slack.media_configure import (
+        VideoConfigureMediaSelection,
+        configure_media_quote_fields,
+    )
+    from app.slack.media_quotes import (
+        PIPELINE_TRANSCRIBE,
+        PIPELINE_TRANSCRIBE_TRANSLATE,
+    )
+
+    translate = configure_media_quote_fields(
+        VideoConfigureMediaSelection(
+            workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
+            embed_source=True,
+            embed_translated=True,
+            review_gate=True,
+            target_languages=["fr"],
+            target_language_names=["French"],
+            files=_files(),
+            channel_id="C1",
+        )
+    )
+    assert translate["pipeline_kind"] == PIPELINE_TRANSCRIBE_TRANSLATE
+    assert translate["extra"] == {
+        "embed_source": True,
+        "embed_translated": True,
+        "review_gate": True,
+        "workflow_type": "transcribe_translate",
+    }
+
+    transcribe = configure_media_quote_fields(
+        VideoConfigureMediaSelection(
+            workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
+            embed_source=True,
+            embed_translated=False,
+            review_gate=False,
+            target_languages=[],
+            target_language_names=[],
+            files=_files(),
+            channel_id="C1",
+        )
+    )
+    assert transcribe["pipeline_kind"] == PIPELINE_TRANSCRIBE
+    assert transcribe["extra"]["embed_source"] is True
+    assert transcribe["extra"]["review_gate"] is True
+
+
+class _FakeRayContext(dict):
+    enterprise_id = None
+
+
+@pytest.mark.asyncio
+async def test_workflow_type_change_rebuilds_modal_without_languages():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_workflow_type
+
+    client = AsyncMock()
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": _files(),
+                    "thread_ts": "1.2",
+                    "show_embed_option": True,
+                }
+            ),
+        }
+    }
+    action = {"selected_option": {"value": "transcribe_only"}}
+    await handle_video_configure_workflow_type(client=client, body=body, action=action)
+    client.views_update.assert_awaited_once()
+    view = client.views_update.await_args.kwargs["view"]
+    block_ids = [block.get("block_id") for block in view["blocks"]]
+    assert "target_languages" not in block_ids
+    assert "embed_translated" not in block_ids
+    assert "review_gate" not in block_ids
+    embedding = next(b for b in view["blocks"] if b.get("block_id") == "embedding")
+    assert [opt["value"] for opt in embedding["element"]["options"]] == ["embed_source"]
+
+
+@pytest.mark.asyncio
+async def test_workflow_type_change_keeps_source_embed_selection():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_workflow_type
+
+    client = AsyncMock()
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": _files(),
+                    "thread_ts": "1.2",
+                    "show_embed_option": True,
+                }
+            ),
+            "state": {
+                "values": {
+                    "embedding": {
+                        "embedding_options": {
+                            "selected_options": [_option("embed_source")]
+                        }
+                    },
+                }
+            },
+        }
+    }
+    action = {"selected_option": {"value": "transcribe_only"}}
+    await handle_video_configure_workflow_type(client=client, body=body, action=action)
+    view = client.views_update.await_args.kwargs["view"]
+    assert "review_gate" not in [block.get("block_id") for block in view["blocks"]]
+    embedding = next(b for b in view["blocks"] if b.get("block_id") == "embedding")
+    assert [opt["value"] for opt in embedding["element"]["initial_options"]] == [
+        "embed_source"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_workflow_type_change_preserves_word_transcript_state():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_workflow_type
+
+    client = AsyncMock()
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": _files(),
+                    "thread_ts": "1.2",
+                    "show_embed_option": True,
+                }
+            ),
+            "state": {
+                "values": {
+                    "word_transcript": {
+                        "word_transcript_format": {
+                            "selected_option": _option("speakers"),
+                        }
+                    },
+                }
+            },
+        }
+    }
+    action = {"selected_option": {"value": "transcribe_only"}}
+    await handle_video_configure_workflow_type(client=client, body=body, action=action)
+    view = client.views_update.await_args.kwargs["view"]
+    word = next(b for b in view["blocks"] if b.get("block_id") == "word_transcript")
+    assert word["element"]["initial_option"]["value"] == "speakers"
+    assert "word_format" not in [block.get("block_id") for block in view["blocks"]]
+
+
+@pytest.mark.asyncio
+async def test_workflow_type_change_preserves_file_selection():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_workflow_type
+
+    client = AsyncMock()
+    files = [
+        {"file_id": "F1", "file_name": "clip.mp4"},
+        {"file_id": "F2", "file_name": "other.mp4"},
+    ]
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": files,
+                    "thread_ts": "1.2",
+                    "show_embed_option": True,
+                }
+            ),
+            "state": {
+                "values": {
+                    "selected_file": {
+                        "file_display": {
+                            "selected_options": [_option("F2", "other.mp4")]
+                        }
+                    },
+                }
+            },
+        }
+    }
+    action = {"selected_option": {"value": "transcribe_only"}}
+    await handle_video_configure_workflow_type(client=client, body=body, action=action)
+    view = client.views_update.await_args.kwargs["view"]
+    selected = next(b for b in view["blocks"] if b.get("block_id") == "selected_file")
+    assert [
+        opt["value"] for opt in selected["element"].get("initial_options") or []
+    ] == ["F2"]
+
+
+@pytest.mark.asyncio
+async def test_configure_submit_creates_quote1_with_embed_source_flag():
+    from unittest.mock import AsyncMock, patch
+
+    from app.slack.handlers.media_submissions import handle_video_configure_media_submit
+
+    view = _view(
+        metadata={
+            "channel_id": "C1",
+            "files": _files(),
+            "thread_ts": "1.2",
+            "show_embed_option": True,
+        },
+        values={
+            "workflow_type": {
+                "video_configure_workflow_type": {
+                    "selected_option": _option("transcribe_only"),
+                }
+            },
+            "selected_file": {"file_display": {"selected_options": [_option("F1")]}},
+            "embedding": {
+                "embedding_options": {"selected_options": [_option("embed_source")]}
+            },
+        },
+    )
+    context = _FakeRayContext(
+        {
+            "user_id": "U1",
+            "team_id": "T1",
+            "channel_id": "C1",
+            "ray": object(),
+        }
+    )
+    client = AsyncMock()
+    client.token = "xoxb-test"
+    client.files_info.return_value = {
+        "file": {
+            "url_private_download": "https://example.com/clip.mp4",
+            "duration_ms": 60000,
+        }
+    }
+    submission = type("Submission", (), {"id": 99})()
+
+    with (
+        patch(
+            "app.slack.handlers.media_submissions.require_ray_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.handlers.media_submissions.media_configure_enabled_for_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.handlers.media_submissions.check_and_record_transcription_only_submission_async",
+            new_callable=AsyncMock,
+            return_value=(False, submission),
+        ),
+        patch(
+            "app.slack.handlers.media_submissions.file_info_with_quote_duration",
+            new_callable=AsyncMock,
+            side_effect=lambda file_info, *_args, **_kwargs: file_info,
+        ),
+        patch(
+            "app.slack.handlers.media_submissions.create_media_quote_session",
+            new_callable=AsyncMock,
+        ) as create_session,
+        patch(
+            "app.slack.handlers.media_submissions.post_or_auto_start_media_quote",
+            new_callable=AsyncMock,
+        ),
+    ):
+        create_session.return_value = {"quote_id": "q1"}
+        await handle_video_configure_media_submit(
+            view=view, context=context, client=client
+        )
+
+    create_session.assert_awaited_once()
+    kwargs = create_session.await_args.kwargs
+    assert kwargs["pipeline_kind"] == "transcribe"
+    assert kwargs["extra"]["embed_source"] is True
+    assert kwargs["extra"]["review_gate"] is True
+    assert kwargs["extra"]["workflow_type"] == "transcribe_only"
+
+
+class TestMediaConfigureEnabledForUser:
+    """RAY-81819: Configure is Verify Admin/Owner only until rollout completes."""
+
+    @pytest.mark.asyncio
+    async def test_admin_gets_configure(self, monkeypatch):
+        from app.slack import media_configure
+
+        async def _may_receive_quotes(ray):
+            return True
+
+        monkeypatch.setattr(
+            media_configure, "user_may_receive_quotes", _may_receive_quotes
+        )
+        with patch("app.config.config") as mock_config:
+            mock_config.media_configure_admin_only = True
+            assert (
+                await media_configure.media_configure_enabled_for_user(object()) is True
+            )
+
+    @pytest.mark.asyncio
+    async def test_non_admin_falls_back_to_legacy(self, monkeypatch):
+        from app.slack import media_configure
+
+        async def _may_receive_quotes(ray):
+            return False
+
+        monkeypatch.setattr(
+            media_configure, "user_may_receive_quotes", _may_receive_quotes
+        )
+        with patch("app.config.config") as mock_config:
+            mock_config.media_configure_admin_only = True
+            assert (
+                await media_configure.media_configure_enabled_for_user(object())
+                is False
+            )
+
+    @pytest.mark.asyncio
+    async def test_flag_off_gives_everyone_configure(self, monkeypatch):
+        from app.slack import media_configure
+
+        async def _fail(ray):  # pragma: no cover - must not be consulted
+            raise AssertionError("admin lookup must be skipped when the flag is off")
+
+        monkeypatch.setattr(media_configure, "user_may_receive_quotes", _fail)
+        with patch("app.config.config") as mock_config:
+            mock_config.media_configure_admin_only = False
+            assert await media_configure.media_configure_enabled_for_user(None) is True
+
+
+@pytest.mark.asyncio
+async def test_configure_action_blocks_non_admin_clicker():
+    """RAY-81819: the poster's gate must not let a non-admin click through."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.slack.handlers.media import handle_video_configure_media
+
+    client = AsyncMock()
+    action = {
+        "value": json.dumps(
+            {"channel_id": "C1", "files": _files(), "show_embed_option": True}
+        )
+    }
+    body = {"trigger_id": "T-1"}
+    context = _FakeRayContext({"user_id": "U2", "channel_id": "C1", "ray": object()})
+
+    with (
+        patch(
+            "app.slack.handlers.media.populate_ray_connection", new_callable=AsyncMock
+        ),
+        patch(
+            "app.slack.handlers.media.require_ray_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.handlers.media.open_loading_modal",
+            new_callable=AsyncMock,
+            return_value="V1",
+        ),
+        patch(
+            "app.slack.handlers.media.media_configure_enabled_for_user",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "app.slack.handlers.media.video_configure_media_modal"
+        ) as configure_modal,
+        patch(
+            "app.slack.handlers.media.safe_views_update", new_callable=AsyncMock
+        ) as views_update,
+    ):
+        await handle_video_configure_media(
+            context=context, action=action, body=body, client=client
+        )
+
+    configure_modal.assert_not_called()
+    views_update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_configure_submit_blocks_non_admin():
+    """RAY-81819: a stale or reopened Configure view must not create a v2 session."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.slack.handlers.media_submissions import handle_video_configure_media_submit
+
+    view = _view(
+        metadata={"channel_id": "C1", "files": _files(), "show_embed_option": True},
+        values={
+            "workflow_type": {
+                "video_configure_workflow_type": {
+                    "selected_option": _option("transcribe_only"),
+                }
+            },
+            "selected_file": {"file_display": {"selected_options": [_option("F1")]}},
+            "embedding": {"embedding_options": {"selected_options": []}},
+        },
+    )
+    context = _FakeRayContext(
+        {"user_id": "U2", "team_id": "T1", "channel_id": "C1", "ray": object()}
+    )
+    client = AsyncMock()
+
+    with (
+        patch(
+            "app.slack.handlers.media_submissions.require_ray_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.handlers.media_submissions.media_configure_enabled_for_user",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "app.slack.handlers.media_submissions.create_media_quote_session",
+            new_callable=AsyncMock,
+        ) as create_session,
+    ):
+        await handle_video_configure_media_submit(
+            view=view, context=context, client=client
+        )
+
+    create_session.assert_not_awaited()

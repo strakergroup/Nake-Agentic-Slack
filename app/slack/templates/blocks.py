@@ -10,6 +10,7 @@ from app.ray.events.models import JobQuoteCreatedEvent
 from app.slack.ai_quote_display import ai_language_cost_display_amounts
 from app.slack.document_mt_quote_adjustment import (
     DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID,
+    document_mt_all_pairs,
     document_mt_language_costs,
     document_mt_language_costs_with_cancelled,
     document_mt_pdf_pages_for_pairs,
@@ -18,8 +19,15 @@ from app.slack.document_mt_quote_adjustment import (
 )
 from app.slack.media_quote_adjustment import (
     MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID,
+    media_embed_languages,
+    media_selected_target_languages,
     media_translation_language_costs,
     media_translation_quote_from_session,
+)
+from app.slack.media_quotes import (
+    source_embed_tokens_for_session,
+    translated_embed_language_detail,
+    translated_embed_tokens_for_session,
 )
 from app.slack.select_options import get_languages_sync
 from app.slack.utils import (
@@ -840,6 +848,14 @@ def media_translation_quote_blocks(
             language_costs, selected_pairs
         )
         translation_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
+    else:
+        selected_pairs = document_mt_all_pairs(quote)
+    selected_languages = media_selected_target_languages(session)
+    embed_codes = media_embed_languages(session, selected_pairs)
+    embed_tokens = translated_embed_tokens_for_session(
+        session, language_count=len(embed_codes)
+    )
+    source_tokens = source_embed_tokens_for_session(session)
 
     return evaluation_credits_quote_blocks(
         _("AI Translation"),
@@ -855,7 +871,25 @@ def media_translation_quote_blocks(
         status_message=status_message,
         is_ibm=is_ibm_enterprise(session.get("enterprise_id")),
         language_costs=language_costs or None,
-        intro_text=_("Running the AI translation will incur the following cost:"),
+        intro_text="",
+        source_label=(_("Source subtitle embedding") if source_tokens else None),
+        source_detail=None,
+        source_tokens=source_tokens or None,
+        additional_label=(
+            (
+                f"{_('Translated subtitle embedding')} "
+                f"({translated_embed_language_detail(len(embed_codes))})"
+            )
+            if embed_tokens
+            else None
+        ),
+        additional_detail=None,
+        additional_tokens=embed_tokens or None,
+        adjust_guidance=_(
+            "Review the cost below and click *Accept Quote* "
+            "to continue, or *Adjust Request* to remove "
+            "selected languages, files, or services."
+        ),
     )
 
 
@@ -1023,6 +1057,13 @@ def evaluation_credits_quote_blocks(
     is_ibm: bool = False,
     language_costs: list[dict[str, Any]] | None = None,
     intro_text: str | None = None,
+    source_label: str | None = None,
+    source_detail: str | None = None,
+    source_tokens: int | None = None,
+    additional_label: str | None = None,
+    additional_detail: str | None = None,
+    additional_tokens: int | None = None,
+    adjust_guidance: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build Slack blocks for a single-service evaluate credits quote."""
     cost_label = _("Cost")
@@ -1043,15 +1084,18 @@ def evaluation_credits_quote_blocks(
             "type": "header",
             "text": {"type": "plain_text", "text": _("Service Quote"), "emoji": True},
         },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": intro_text,
-            },
-        },
-        {"type": "divider"},
     ]
+    if intro_text:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": intro_text,
+                },
+            }
+        )
+    blocks.append({"type": "divider"})
     # PDF conversion runs first in the workflow, so list it above AI Translation.
     total_tokens = token_cost
     if pdf_tokens and pdf_page_count:
@@ -1136,6 +1180,54 @@ def evaluation_credits_quote_blocks(
                 ],
             }
         )
+    if source_tokens and source_label:
+        source_text = (
+            f"*{source_label}:*\n{source_detail}"
+            if source_detail
+            else f"*{source_label}:*"
+        )
+        blocks.append(
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": source_text,
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"{_format_evaluate_quote_cost(source_tokens, is_ibm=is_ibm)}"
+                        ),
+                    },
+                ],
+            }
+        )
+        total_tokens += source_tokens
+    if additional_tokens and additional_label:
+        additional_text = (
+            f"*{additional_label}:*\n{additional_detail}"
+            if additional_detail
+            else f"*{additional_label}:*"
+        )
+        blocks.append(
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": additional_text,
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"{_format_evaluate_quote_cost(additional_tokens, is_ibm=is_ibm)}"
+                        ),
+                    },
+                ],
+            }
+        )
+        total_tokens += additional_tokens
     blocks.extend(
         [
             {"type": "divider"},
@@ -1145,20 +1237,21 @@ def evaluation_credits_quote_blocks(
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": (
-                                _(
-                                    "Review the cost below. To continue preparing "
-                                    "your human translation quote, click "
-                                    "*Accept Quote* or click *Adjust Request* to "
-                                    "remove languages and/or source files."
-                                )
-                                if ht_pretranslate_quote
-                                else _(
-                                    "Review the cost below and click *Accept Quote* "
-                                    "to continue, or *Adjust Request* to remove "
-                                    "languages and/or source files."
-                                )
-                            ),
+                        "text": (
+                            _(
+                                "Review the cost below. To continue preparing "
+                                "your human translation quote, click "
+                                "*Accept Quote* or click *Adjust Request* to "
+                                "remove languages and/or source files."
+                            )
+                            if ht_pretranslate_quote
+                            else adjust_guidance
+                            or _(
+                                "Review the cost below and click *Accept Quote* "
+                                "to continue, or *Adjust Request* to remove "
+                                "languages and/or source files."
+                            )
+                        ),
                         },
                     }
                 ]

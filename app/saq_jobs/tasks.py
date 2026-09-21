@@ -335,6 +335,53 @@ async def slack_upload_mt_result(
         _safe_unlink(file_path)
 
 
+async def _post_configure_srt_review(
+    client: Any,
+    *,
+    quote_id: str,
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    from app.media.media_workflow import MediaWorkflowStage
+    from app.slack.media_quotes import get_media_quote_session
+    from app.slack.media_workflow_actions import _post_srt_review
+
+    try:
+        session = await get_media_quote_session(quote_id)
+    except Exception:
+        logger.exception(
+            "SRT review session lookup failed; posting review anyway",
+            extra={"quote_id": quote_id},
+        )
+        session = None
+    if session is not None and session.get("stage") not in (
+        MediaWorkflowStage.TRANSCRIBING,
+        MediaWorkflowStage.AWAITING_SOURCE_REVIEW,
+    ):
+        return
+    await _post_srt_review(
+        client,
+        {
+            "quote_id": quote_id,
+            "channel_id": channel_id,
+            "thread_ts": thread_ts,
+        },
+    )
+
+
+async def _fail_deferred_configure_review(task_uuid: str) -> None:
+    from app.ray.events.media_pipeline_events import (
+        fail_media_submissions,
+        mark_media_quote_cancelled,
+    )
+    from app.transcriber_tasks.tasks import get_transcription_task
+
+    task = await get_transcription_task(task_uuid)
+    extra = dict(task.extra_data or {}) if task is not None else None
+    await fail_media_submissions(extra)
+    await mark_media_quote_cancelled(extra)
+
+
 async def slack_upload_transcription(
     ctx: Context,
     *,
@@ -346,9 +393,12 @@ async def slack_upload_transcription(
     channel_id: str,
     thread_ts: str | None = None,
     follow_up_message: str | None = None,
+    srt_review_quote_id: str | None = None,
     team_id: str | None = None,
     slack_user_id: str | None = None,
     enterprise_id: str | None = None,
+    word_file_id: str | None = None,
+    word_file_name: str | None = None,
 ) -> dict[str, Any]:
     """Durable handler for transcription file uploads.
 
@@ -394,6 +444,8 @@ async def slack_upload_transcription(
             "Transcription Slack delivery failed (no_slack_user)",
             extra=log_extra,
         )
+        if srt_review_quote_id:
+            await _fail_deferred_configure_review(task_uuid)
         return {"status": "no_slack_user", "task_uuid": task_uuid}
 
     file_path: str | None = None
@@ -407,6 +459,13 @@ async def slack_upload_transcription(
                 Exception(f"Failed to download file {file_id} from file server"),
                 "Transcription background task failed",
             )
+            if srt_review_quote_id:
+                await _post_configure_srt_review(
+                    client,
+                    quote_id=srt_review_quote_id,
+                    channel_id=channel_id,
+                    thread_ts=thread_ts,
+                )
             return {"status": "download_failed", "task_uuid": task_uuid}
 
         # Rename so Slack preserves the original filename + extension.
@@ -424,10 +483,49 @@ async def slack_upload_transcription(
             filename=file_name,
             thread_ts=thread_ts,
         )
+        if word_file_id and word_file_name:
+            # Best-effort relative to the SRT: a Word failure must not fail
+            # the job or block the follow-up / review buttons (RAY-81850).
+            word_path: str | None = None
+            try:
+                word_output = await download_from_file_server_async(word_file_id)
+                word_path = word_output.get("file")
+                if not word_path:
+                    raise RuntimeError(
+                        "File-server download returned no path for "
+                        f"word_file_id={word_file_id}"
+                    )
+                word_dir = os.path.dirname(word_path)
+                renamed_word_path = os.path.join(word_dir, word_file_name)
+                if word_path != renamed_word_path:
+                    os.rename(word_path, renamed_word_path)
+                    word_path = renamed_word_path
+                await upload_file_to_slack_memory_efficient(
+                    client=client,
+                    file_path=word_path,
+                    channel_id=channel_id,
+                    title=word_file_name,
+                    filename=word_file_name,
+                    thread_ts=thread_ts,
+                )
+            except Exception:
+                logger.exception(
+                    "Word transcript upload failed; SRT already delivered",
+                    extra={**log_extra, "word_file_id": word_file_id},
+                )
+            finally:
+                _safe_unlink(word_path)
         if follow_up_message:
             await client.chat_postMessage(
                 channel=channel_id,
                 text=follow_up_message,
+                thread_ts=thread_ts,
+            )
+        if srt_review_quote_id:
+            await _post_configure_srt_review(
+                client,
+                quote_id=srt_review_quote_id,
+                channel_id=channel_id,
                 thread_ts=thread_ts,
             )
         logger.info("Transcription upload delivered", extra=log_extra)
@@ -439,6 +537,20 @@ async def slack_upload_transcription(
                 Exception("Background transcription file handling failed"),
                 "Background transcription file handling failed (final attempt)",
             )
+            if srt_review_quote_id:
+                try:
+                    fail_client = AsyncWebClient(token=slack_user.bot_token)
+                    await _post_configure_srt_review(
+                        fail_client,
+                        quote_id=srt_review_quote_id,
+                        channel_id=channel_id,
+                        thread_ts=thread_ts,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to post deferred SRT review after upload failure",
+                        extra=log_extra,
+                    )
         raise
     finally:
         _safe_unlink(file_path)

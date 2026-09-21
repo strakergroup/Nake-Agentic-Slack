@@ -14,9 +14,14 @@ from slack_sdk.models.blocks import (
     SectionBlock,
 )
 from slack_sdk.models.blocks.block_elements import (
+    CheckboxesElement,
+    FileInputElement,
+    RadioButtonsElement,
     StaticMultiSelectElement,
+    StaticSelectElement,
 )
 
+from app.media.word_transcript import WordTranscriptFormat
 from app.translate import _
 
 from ...auth.connector import (
@@ -37,8 +42,12 @@ from ...slack.utils import format_strings_display
 from ..ai_quote_display import ai_language_cost_display_amounts
 from ..evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_CALLBACK_ID,
+    AI_QUOTE_EMBED_SELECTION_ACTION_ID,
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
+    EMBED_SOURCE_VALUE,
 )
+from ..media_quote_adjustment import MEDIA_TRANSLATION_QUOTE_KIND
+from ..media_quotes import translated_embed_language_detail
 from ..select_options import (
     filter_auto_translate_language_options,
     get_auto_translate_language_options,
@@ -52,6 +61,7 @@ from .blocks import (
     home_auth_blocks,
     verify_quote_blocks,
 )
+from .models import SlackMediaFileRef
 
 
 async def home_view(
@@ -927,21 +937,37 @@ def evaluation_ai_quote_adjust_modal(
     selected_pairs: list[str],
     ai_tokens: int,
     pdf_tokens: int = 0,
+    embed_tokens: int = 0,
+    embed_language_count: int = 0,
+    source_embed_tokens: int = 0,
+    show_embed_toggles: bool = False,
+    embed_source: bool = False,
+    embed_languages: list[str] | None = None,
+    embed_tokens_per_language: int = 0,
+    show_ai_cost_row: bool = False,
     channel_id: str | None = None,
     message_ts: str | None = None,
 ) -> dict[str, Any]:
     """Build a staged AI quote modal with per-file language selection."""
     selected = set(selected_pairs)
+    tick_embed = {str(code) for code in (embed_languages or [])}
+    if quote_kind == MEDIA_TRANSLATION_QUOTE_KIND:
+        intro_text = _(
+            "Deselect any languages or services you don't need. "
+            "If all options are deselected, the quote will be cancelled."
+        )
+    else:
+        intro_text = _(
+            "Deselect any file and language combinations you do not want "
+            "translated. Selections are independent per file. Deselecting "
+            "all cancels the quote."
+        )
     blocks: list[dict[str, Any]] = [
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _(
-                    "Deselect any file and language combinations you do not want "
-                    "translated. Selections are independent per file. Deselecting "
-                    "all cancels the quote."
-                ),
+                "text": intro_text,
             },
         },
     ]
@@ -980,14 +1006,75 @@ def evaluation_ai_quote_adjust_modal(
         }
         if option_value in selected:
             element["initial_options"] = [option]
+        elements = [element]
+        if show_embed_toggles:
+            if embed_tokens_per_language:
+                embed_text = (
+                    f"*{_('Embed')}*: "
+                    f"{_format_evaluate_quote_cost(embed_tokens_per_language)}"
+                )
+            else:
+                embed_text = f"*{_('Embed')}*"
+            embed_option = {
+                "text": {"type": "mrkdwn", "text": embed_text},
+                "value": option_value,
+            }
+            embed_element: dict[str, Any] = {
+                "type": "checkboxes",
+                "options": [embed_option],
+                "action_id": AI_QUOTE_EMBED_SELECTION_ACTION_ID,
+            }
+            if language_uuid in tick_embed:
+                embed_element["initial_options"] = [embed_option]
+            elements.append(embed_element)
         blocks.append(
             {
                 "type": "actions",
                 "block_id": f"ai_quote_language_{file_uuid or 'all'}_{language_uuid}",
-                "elements": [element],
+                "elements": elements,
             }
         )
     blocks.append({"type": "divider"})
+    if show_embed_toggles:
+        if source_embed_tokens:
+            source_text = (
+                f"*{_('Embed Source subtitles')}:* "
+                f"{_format_evaluate_quote_cost(source_embed_tokens)}"
+            )
+        else:
+            source_text = f"*{_('Source subtitles')}*"
+        source_option = {
+            "text": {"type": "mrkdwn", "text": source_text},
+            "value": EMBED_SOURCE_VALUE,
+        }
+        source_element: dict[str, Any] = {
+            "type": "checkboxes",
+            "options": [source_option],
+            "action_id": AI_QUOTE_EMBED_SELECTION_ACTION_ID,
+        }
+        if embed_source:
+            source_element["initial_options"] = [source_option]
+        blocks.append(
+            {
+                "type": "actions",
+                "block_id": "ai_quote_embed_source",
+                "elements": [source_element],
+            }
+        )
+    if show_ai_cost_row:
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "ai_quote_translation_cost_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{_('AI Translation')}:* "
+                        f"{_format_evaluate_quote_cost(ai_tokens)}"
+                    ),
+                },
+            }
+        )
     if pdf_tokens:
         blocks.append(
             {
@@ -1002,7 +1089,36 @@ def evaluation_ai_quote_adjust_modal(
                 },
             }
         )
-    total_tokens = ai_tokens + pdf_tokens
+    if source_embed_tokens:
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "ai_quote_source_embed_cost_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{_('Source subtitle embedding')}:* "
+                        f"{_format_evaluate_quote_cost(source_embed_tokens)}"
+                    ),
+                },
+            }
+        )
+    if embed_tokens:
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "ai_quote_embed_cost_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{_('Translated subtitle embedding')}:* "
+                        f"{translated_embed_language_detail(embed_language_count)} · "
+                        f"{_format_evaluate_quote_cost(embed_tokens)}"
+                    ),
+                },
+            }
+        )
+    total_tokens = ai_tokens + pdf_tokens + source_embed_tokens + embed_tokens
     blocks.append(
         {
             "type": "section",
@@ -1377,6 +1493,227 @@ def video_transcribe_translate_modal(
     }
 
 
+def _checkboxes_element(
+    action_id: str, options: list[Option], *, selected_values: set[str]
+) -> CheckboxesElement:
+    initial = [option for option in options if option.value in selected_values]
+    if initial:
+        return CheckboxesElement(
+            action_id=action_id,
+            options=options,
+            initial_options=initial,
+        )
+    return CheckboxesElement(action_id=action_id, options=options)
+
+
+def video_configure_media_modal(
+    channel_id: str,
+    files: list[SlackMediaFileRef],
+    thread_ts: str | None = None,
+    *,
+    show_embed_option: bool = True,
+    show_translate_options: bool = True,
+    embed_source: bool = False,
+    embed_translated: bool = False,
+    word_transcript_format: str | None = None,
+    selected_file_ids: list[str] | None = None,
+    selected_language_values: list[str] | None = None,
+) -> dict[str, Any]:
+    transcribe_only = Option(
+        text=PlainTextObject(text=_("Transcription only"), emoji=True),
+        value="transcribe_only",
+    )
+    transcribe_translate = Option(
+        text=PlainTextObject(text=_("Transcription and translation"), emoji=True),
+        value="transcribe_translate",
+    )
+    workflow_initial = (
+        transcribe_translate if show_translate_options else transcribe_only
+    )
+    file_options = [
+        Option(
+            text=PlainTextObject(text=f["file_name"][:75], emoji=False),
+            value=f["file_id"],
+        )
+        for f in files
+    ]
+    language_options = [
+        Option(
+            text=PlainTextObject(text=opt["text"]["text"][:75], emoji=False),
+            value=opt["value"],
+        )
+        for opt in get_auto_translate_language_options()
+    ]
+    # Re-seed current selections on rebuilds (dispatch_action) so ticking a
+    # checkbox or radio never drops the user's file/language choices.
+    if selected_file_ids is None:
+        initial_file_options = file_options
+    else:
+        wanted_files = set(selected_file_ids)
+        initial_file_options = [o for o in file_options if o.value in wanted_files]
+    wanted_languages = set(selected_language_values or [])
+    initial_language_options = [
+        o for o in language_options if o.value in wanted_languages
+    ]
+    embed_source_option = Option(
+        text=PlainTextObject(text=_("Source subtitles"), emoji=True),
+        value="embed_source",
+    )
+    embed_translated_option = Option(
+        text=PlainTextObject(text=_("Translated subtitles"), emoji=True),
+        value="embed_translated",
+    )
+
+    blocks: list[Block] = [
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "Choose how to process your media file(s). You can transcribe only, "
+                    "or transcribe and translate, and optionally embed subtitles "
+                    "and select an extra transcript output format (in addition to SRT)."
+                )
+            )
+        ),
+        InputBlock(
+            block_id="selected_file",
+            label=PlainTextObject(text=_("File(s) to process")),
+            element=StaticMultiSelectElement(
+                action_id="file_display",
+                placeholder=PlainTextObject(text=_("Selected files")),
+                options=file_options,
+                initial_options=initial_file_options or None,
+            ),
+            optional=False,
+        ),
+        InputBlock(
+            block_id="workflow_type",
+            label=PlainTextObject(text=_("Workflow")),
+            dispatch_action=True,
+            element=RadioButtonsElement(
+                action_id="video_configure_workflow_type",
+                options=[transcribe_only, transcribe_translate],
+                initial_option=workflow_initial,
+            ),
+        ),
+    ]
+    if show_translate_options:
+        blocks.append(
+            InputBlock(
+                block_id="target_languages",
+                label=PlainTextObject(text=_("Translate to")),
+                element=StaticMultiSelectElement(
+                    action_id="language_mt_options",
+                    placeholder=PlainTextObject(text=_("Select languages")),
+                    options=language_options,
+                    initial_options=initial_language_options or None,
+                ),
+            )
+        )
+    if show_embed_option:
+        embed_options = [embed_source_option]
+        selected_embeds = {"embed_source"} if embed_source else set()
+        if show_translate_options:
+            embed_options.append(embed_translated_option)
+            if embed_translated:
+                selected_embeds.add("embed_translated")
+        blocks.append(
+            InputBlock(
+                block_id="embedding",
+                label=PlainTextObject(text=_("Embedding")),
+                optional=True,
+                element=_checkboxes_element(
+                    "embedding_options",
+                    embed_options,
+                    selected_values=selected_embeds,
+                ),
+            )
+        )
+    none_option = Option(
+        text=PlainTextObject(text=_("None"), emoji=True),
+        value="none",
+    )
+    word_format_options = [
+        none_option,
+        *(
+            Option(text=PlainTextObject(text=label, emoji=True), value=fmt.value)
+            for fmt, label in (
+                (WordTranscriptFormat.TEXT, _("Text")),
+                (WordTranscriptFormat.SPEAKERS, _("Speakers")),
+                (WordTranscriptFormat.TIMESTAMPS, _("Timestamps")),
+                (
+                    WordTranscriptFormat.SPEAKERS_AND_TIMESTAMPS,
+                    _("Speakers and timestamps"),
+                ),
+            )
+        ),
+    ]
+    initial_word_format = next(
+        (opt for opt in word_format_options if opt.value == word_transcript_format),
+        none_option,
+    )
+    blocks.append(
+        InputBlock(
+            block_id="word_transcript",
+            label=PlainTextObject(text=_("Native transcript copy (.docx format)")),
+            optional=True,
+            element=StaticSelectElement(
+                action_id="word_transcript_format",
+                options=word_format_options,
+                initial_option=initial_word_format,
+            ),
+        )
+    )
+
+    return {
+        "type": "modal",
+        "callback_id": "video_configure_media_submit",
+        "private_metadata": json.dumps(
+            {
+                "channel_id": channel_id,
+                "files": files,
+                "thread_ts": thread_ts,
+                "show_embed_option": show_embed_option,
+            }
+        ),
+        "title": {"type": "plain_text", "text": _("Service selection")[:24]},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
+        "blocks": [block.to_dict() for block in blocks],
+    }
+
+
+def media_srt_replace_modal(
+    quote_id: str, language: str | None = None
+) -> dict[str, Any]:
+    file_input = InputBlock(
+        block_id="srt_file",
+        label=PlainTextObject(text=_("Replacement file")),
+        element=FileInputElement(
+            action_id="srt_file_input",
+            max_files=1,
+        ),
+    )
+    metadata = (
+        json.dumps({"quote_id": quote_id, "language": language})
+        if language
+        else quote_id
+    )
+    return {
+        "type": "modal",
+        "callback_id": "media_srt_replace_submit",
+        "private_metadata": metadata,
+        "title": {"type": "plain_text", "text": _("Edit and reupload")[:24]},
+        "submit": {"type": "plain_text", "text": _("Reupload")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
+        "blocks": [
+            SectionBlock(
+                text=MarkdownTextObject(text=_("Upload an edited subtitle file."))
+            ).to_dict(),
+            file_input.to_dict(),
+        ],
+    }
+
+
 def video_embed_subtitles_modal(
     channel_id: str,
     files: list[dict],  # [{file_id, file_name, duration_ms}, ...]
@@ -1418,7 +1755,7 @@ def video_embed_subtitles_modal(
     blocks.append(
         InputBlock(
             block_id="selected_file",
-            label=PlainTextObject(text=_("Select your files to process")),
+            label=PlainTextObject(text=_("File(s) to process")),
             element=StaticMultiSelectElement(
                 action_id="file_display",
                 placeholder=PlainTextObject(text=_("Selected files")),

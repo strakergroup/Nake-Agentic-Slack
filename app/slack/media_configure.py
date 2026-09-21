@@ -1,0 +1,195 @@
+"""Parse Slack Configure-media modal submissions into workflow flags."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from pydantic import BaseModel
+
+from app.auth.connector import RayConnection, user_may_receive_quotes
+from app.media.media_workflow import MediaWorkflowType
+from app.media.word_transcript import WordTranscriptFormat
+from app.slack.media_quotes import PIPELINE_TRANSCRIBE, PIPELINE_TRANSCRIBE_TRANSLATE
+from app.translate import _
+
+
+async def media_configure_enabled_for_user(ray: RayConnection | None) -> bool:
+    """Whether this user gets the Configure media UI instead of the legacy buttons.
+
+    Gated on Verify Admin/Owner while Configure rolls out (RAY-81819); set
+    ``MEDIA_CONFIGURE_ADMIN_ONLY=false`` to open it to everyone.
+    """
+    from app.config import config
+
+    if not config.media_configure_admin_only:
+        return True
+    return await user_may_receive_quotes(ray)
+
+
+class VideoConfigureMediaError(Exception):
+    """Raised when the Configure media modal is missing required selections."""
+
+
+class VideoConfigureMediaSelection(BaseModel):
+    workflow_type: MediaWorkflowType
+    embed_source: bool
+    embed_translated: bool
+    review_gate: bool
+    target_languages: list[str]
+    target_language_names: list[str]
+    files: list[dict[str, Any]]
+    channel_id: str
+    thread_ts: str | None = None
+    show_embed_option: bool = True
+    word_transcript_format: str | None = None
+
+
+def _selected_options(
+    values: dict[str, Any], block_id: str, action_id: str
+) -> list[dict]:
+    block = values.get(block_id) or {}
+    action = block.get(action_id) or {}
+    return list(action.get("selected_options") or [])
+
+
+def _multi_select_values(
+    values: dict[str, Any], block_id: str, action_id: str
+) -> list[str] | None:
+    """Current values of a multi-select, or None when the block is not in state."""
+    block = values.get(block_id)
+    if block is None:
+        return None
+    action = block.get(action_id) or {}
+    return [opt["value"] for opt in action.get("selected_options") or []]
+
+
+def _checkbox_selected(
+    values: dict[str, Any], block_id: str, action_id: str, value: str
+) -> bool:
+    return any(
+        opt.get("value") == value
+        for opt in _selected_options(values, block_id, action_id)
+    )
+
+
+def _embedding_checkbox_selected(values: dict[str, Any], value: str) -> bool:
+    return _checkbox_selected(
+        values, "embedding", "embedding_options", value
+    ) or _checkbox_selected(values, value, f"{value}_options", value)
+
+
+def _radio_selected_value(
+    values: dict[str, Any], block_id: str, action_id: str
+) -> str | None:
+    block = values.get(block_id) or {}
+    action = block.get(action_id) or {}
+    return (action.get("selected_option") or {}).get("value")
+
+
+def word_transcript_selection(values: dict[str, Any]) -> str | None:
+    selected = _radio_selected_value(
+        values, "word_transcript", "word_transcript_format"
+    )
+    if selected in (None, "none"):
+        return None
+    try:
+        return WordTranscriptFormat(selected).value
+    except ValueError:
+        return None
+
+
+def parse_video_configure_media_view(
+    view: dict[str, Any],
+) -> VideoConfigureMediaSelection:
+    try:
+        metadata = json.loads(view["private_metadata"])
+    except (json.JSONDecodeError, TypeError, KeyError) as exc:
+        raise VideoConfigureMediaError(_("Please choose a media workflow.")) from exc
+    if not isinstance(metadata, dict):
+        raise VideoConfigureMediaError(_("Please choose a media workflow."))
+    values = view["state"]["values"]
+    selected_workflow = _radio_selected_value(
+        values, "workflow_type", "video_configure_workflow_type"
+    )
+    try:
+        workflow_type = MediaWorkflowType(selected_workflow)
+    except ValueError as exc:
+        raise VideoConfigureMediaError(_("Please choose a media workflow.")) from exc
+
+    all_files = list(metadata.get("files") or [])
+    selected_file_ids = {
+        opt["value"]
+        for opt in _selected_options(values, "selected_file", "file_display")
+    }
+    files = [
+        file_info
+        for file_info in all_files
+        if file_info["file_id"] in selected_file_ids
+    ]
+    if not files:
+        raise VideoConfigureMediaError(_("Please select at least one file to process."))
+
+    lang_options = _selected_options(values, "target_languages", "language_mt_options")
+    target_languages = [opt["value"] for opt in lang_options]
+    target_language_names = [
+        opt.get("text", {}).get("text", opt["value"]) for opt in lang_options
+    ]
+    if workflow_type is MediaWorkflowType.TRANSCRIBE_TRANSLATE and not target_languages:
+        raise VideoConfigureMediaError(
+            _("Please select at least one target language for translation.")
+        )
+
+    show_embed_option = bool(metadata.get("show_embed_option", True))
+    embed_source = show_embed_option and _embedding_checkbox_selected(
+        values, "embed_source"
+    )
+    embed_translated = (
+        show_embed_option
+        and workflow_type is MediaWorkflowType.TRANSCRIBE_TRANSLATE
+        and _embedding_checkbox_selected(values, "embed_translated")
+    )
+    if workflow_type is MediaWorkflowType.TRANSCRIBE_ONLY:
+        target_languages = []
+        target_language_names = []
+        embed_translated = False
+
+    review_gate = embed_source or embed_translated
+
+    return VideoConfigureMediaSelection(
+        workflow_type=workflow_type,
+        embed_source=embed_source,
+        embed_translated=embed_translated,
+        review_gate=review_gate,
+        target_languages=target_languages,
+        target_language_names=target_language_names,
+        files=files,
+        channel_id=str(metadata.get("channel_id") or ""),
+        thread_ts=metadata.get("thread_ts"),
+        show_embed_option=show_embed_option,
+        word_transcript_format=word_transcript_selection(values),
+    )
+
+
+def configure_media_quote_fields(
+    selection: VideoConfigureMediaSelection,
+) -> dict[str, Any]:
+    pipeline_kind = (
+        PIPELINE_TRANSCRIBE
+        if selection.workflow_type is MediaWorkflowType.TRANSCRIBE_ONLY
+        else PIPELINE_TRANSCRIBE_TRANSLATE
+    )
+    extra: dict[str, Any] = {
+        "embed_source": selection.embed_source,
+        "embed_translated": selection.embed_translated,
+        "review_gate": selection.embed_source or selection.embed_translated,
+        "workflow_type": selection.workflow_type.value,
+    }
+    if selection.word_transcript_format:
+        extra["word_transcript_format"] = selection.word_transcript_format
+    return {
+        "pipeline_kind": pipeline_kind,
+        "target_languages": selection.target_languages,
+        "target_language_names": selection.target_language_names,
+        "extra": extra,
+    }

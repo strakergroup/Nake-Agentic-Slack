@@ -18,6 +18,8 @@ from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSLATION_ACCEPT,
     STAGE_TRANSLATING,
     media_translation_tokens,
+    source_embed_tokens_for_session,
+    translated_embed_tokens_for_session,
 )
 
 MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID = "media_translation_quote_adjust"
@@ -125,6 +127,53 @@ def media_translation_language_costs(session: dict[str, Any]) -> list[dict[str, 
     return document_mt_language_costs(
         media_translation_quote_from_session(session),
         language_names=media_translation_language_names(session),
+    )
+
+
+def media_embed_pair_codes(session: dict[str, Any], pairs: Iterable[str]) -> list[str]:
+    """Map Quote2 pair keys to target language codes in quote order."""
+    quote = media_translation_quote_from_session(session)
+    code_by_pair = {
+        document_mt_pair_key(
+            str(file.get("file_id") or ""),
+            str(target.get("target_language") or ""),
+        ): str(target.get("target_language") or "")
+        for file in quote.get("files") or []
+        for target in file.get("target_languages") or []
+    }
+    return [code_by_pair[pair] for pair in pairs if pair in code_by_pair]
+
+
+def media_embed_languages(
+    session: dict[str, Any], selected_pairs: Iterable[str]
+) -> list[str]:
+    """Translated-embed language codes: stored selection ∩ selected pairs.
+
+    Sessions predating per-language selection fall back to all selected
+    (flag on) or none (flag off).
+    """
+    selected_codes = media_embed_pair_codes(session, selected_pairs)
+    stored = session.get("embed_languages")
+    if stored is None:
+        if not session.get("embed_translated"):
+            return []
+        return selected_codes
+    wanted = {str(code) for code in stored}
+    return [code for code in selected_codes if code in wanted]
+
+
+def media_quote2_required_tokens(session: dict[str, Any], pairs: list[str]) -> int:
+    """Tokens charged at Quote2 accept for the selected pairs plus embedding."""
+    from app.slack.document_mt_quote_adjustment import document_mt_tokens_for_pairs
+
+    return (
+        document_mt_tokens_for_pairs(
+            media_translation_quote_from_session(session), pairs
+        )
+        + translated_embed_tokens_for_session(
+            session, language_count=len(media_embed_languages(session, pairs))
+        )
+        + source_embed_tokens_for_session(session)
     )
 
 

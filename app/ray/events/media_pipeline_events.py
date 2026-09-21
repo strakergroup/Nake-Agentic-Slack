@@ -21,8 +21,20 @@ from app.auth.connector import (
 from app.database import async_engines
 from app.media.embed_spend import (
     embedding_source_language,
+    embedding_spend_language_count,
     embedding_target_language_codes,
     is_embed_only_pipeline,
+)
+from app.media.media_workflow import (
+    MediaEmbedRole,
+    MediaWorkflowCommand,
+    MediaWorkflowEvent,
+    MediaWorkflowStage,
+    MediaWorkflowTransitionError,
+    MediaWorkflowType,
+    advance_media_workflow,
+    configure_srt_review_enabled,
+    media_workflow_session_from_quote,
 )
 from app.models import TranscriptionTask, TranscriptionTaskInfo
 from app.ray.events.logging import post_notification
@@ -40,6 +52,7 @@ from app.slack.media_quotes import (
     PIPELINE_TRANSCRIBE_TRANSLATE,
     PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
     STAGE_AWAITING_TRANSLATION_ACCEPT,
+    STAGE_CANCELLED,
     STAGE_DONE,
     STAGE_TRANSCRIBING,
     get_media_quote_session,
@@ -48,6 +61,7 @@ from app.slack.media_quotes import (
 )
 from app.slack.select_options import _get_languages_cached
 from app.slack.templates.messages import (
+    AI_TRANSLATION_COMPLETE_TEXT,
     JobTranscribedEventMessage,
     MediaEmbeddingPartialMessage,
     MediaTranslationPartialMessage,
@@ -60,6 +74,122 @@ from ...dependencies import RayEvent
 from ..submissions import SubmissionStatus, updated_submission_status
 
 logger = logging.getLogger(__name__)
+
+
+def _task_extra_data(task_info: Any) -> dict[str, Any]:
+    extra = getattr(task_info, "extra_data", None)
+    model_dump = getattr(extra, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        return dumped if isinstance(dumped, dict) else {}
+    return dict(extra) if isinstance(extra, dict) else {}
+
+
+async def _advance_configure_after_translation(
+    client: AsyncWebClient,
+    extra: dict[str, Any],
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    quote_id = extra.get("media_quote_id")
+    if not quote_id:
+        return
+    session = await get_media_quote_session(str(quote_id))
+    workflow = media_workflow_session_from_quote(session) if session else None
+    if workflow is None or session is None:
+        return
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    try:
+        decision = advance_media_workflow(
+            workflow, MediaWorkflowEvent.TRANSLATION_COMPLETED
+        )
+    except MediaWorkflowTransitionError as exc:
+        notify_exception(exc)
+        return
+    session["channel_id"] = session.get("channel_id") or channel_id
+    session["thread_ts"] = session.get("thread_ts") or thread_ts
+    await execute_media_workflow_decision(
+        client=client, session=session, decision=decision
+    )
+
+
+async def continue_configure_after_failed_source_embed(
+    client: AsyncWebClient,
+    extra: dict[str, Any] | None,
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    extra_data = extra or {}
+    if not configure_source_embed_continues_translation(extra_data):
+        return
+    quote_id = extra_data.get("media_quote_id")
+    if not quote_id:
+        return
+    session = await get_media_quote_session(str(quote_id))
+    if session is None:
+        return
+    # The source embed will not run: drop it so Quote 2 neither shows nor
+    # gates on a service that can no longer be delivered.
+    session["embed_source"] = False
+    await update_media_quote_session(str(quote_id), {"embed_source": False})
+    workflow = media_workflow_session_from_quote(session)
+    if workflow is None:
+        return
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    try:
+        decision = advance_media_workflow(
+            workflow, MediaWorkflowEvent.SOURCE_EMBED_FAILED
+        )
+    except MediaWorkflowTransitionError as exc:
+        notify_exception(exc)
+        return
+    session["channel_id"] = session.get("channel_id") or channel_id
+    session["thread_ts"] = session.get("thread_ts") or thread_ts
+    await execute_media_workflow_decision(
+        client=client, session=session, decision=decision
+    )
+
+
+async def _advance_configure_after_embed(
+    client: AsyncWebClient,
+    extra: dict[str, Any],
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    quote_id = extra.get("media_quote_id")
+    if not quote_id:
+        return
+    session = await get_media_quote_session(str(quote_id))
+    workflow = media_workflow_session_from_quote(session) if session else None
+    if workflow is None or session is None:
+        return
+    role = extra.get("embed_role")
+    if role == MediaEmbedRole.SOURCE:
+        event = MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    elif role == MediaEmbedRole.TRANSLATED:
+        event = MediaWorkflowEvent.TRANSLATED_EMBED_COMPLETED
+    elif workflow.stage is MediaWorkflowStage.EMBEDDING_SOURCE:
+        event = MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    elif workflow.stage is MediaWorkflowStage.EMBEDDING_TRANSLATED:
+        event = MediaWorkflowEvent.TRANSLATED_EMBED_COMPLETED
+    elif workflow.stage is MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT:
+        event = MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    else:
+        return
+    try:
+        decision = advance_media_workflow(workflow, event)
+    except MediaWorkflowTransitionError as exc:
+        notify_exception(exc)
+        return
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    session["channel_id"] = session.get("channel_id") or channel_id
+    session["thread_ts"] = session.get("thread_ts") or thread_ts
+    await execute_media_workflow_decision(
+        client=client, session=session, decision=decision
+    )
 
 
 def resolve_event_thread_ts(
@@ -298,10 +428,13 @@ async def spend_embedding_credits(
         if not auth.slack_user or not auth.slack_user.ray_user_group_id:
             return 0
 
-        if not task_info.duration_ms:
+        duration_ms = task_info.duration_ms or extra_data.get("duration_ms") or 0
+        try:
+            duration_ms = int(duration_ms)
+        except (TypeError, ValueError):
+            duration_ms = 0
+        if duration_ms <= 0:
             return 0
-
-        duration_ms = task_info.duration_ms
 
         if not is_embed_only_pipeline(task_info):
             if "transcription" not in charged_stages:
@@ -326,7 +459,10 @@ async def spend_embedding_credits(
                 extra_data = task_info.extra_data or {}
                 charged_stages = extra_data.get("_charged_stages", [])
 
-        num_target_languages = task_info.num_target_languages or 1
+        target_languages = embedding_target_language_codes(task_info)
+        num_target_languages = embedding_spend_language_count(
+            task_info, target_languages=target_languages
+        )
         tokens_per_language = duration_to_subtitling_tokens(duration_ms)
         amount = tokens_per_language * num_target_languages
 
@@ -337,7 +473,6 @@ async def spend_embedding_credits(
                 service="media_embedding",
                 unit_type="milliseconds",
             )
-            target_languages = embedding_target_language_codes(task_info)
             poster_email = (
                 extra_data.get("requester_email") or extra_data.get("email") or ""
             ).strip() or None
@@ -463,6 +598,22 @@ async def fail_media_submissions(extra_data: dict | None) -> None:
     )
 
 
+def is_configure_source_embed_job(extra_data: dict | None) -> bool:
+    extra = extra_data or {}
+    return (
+        bool(extra.get("workflow_type"))
+        and extra.get("embed_role") == MediaEmbedRole.SOURCE
+    )
+
+
+def configure_source_embed_continues_translation(extra_data: dict | None) -> bool:
+    extra = extra_data or {}
+    return (
+        is_configure_source_embed_job(extra)
+        and extra.get("workflow_type") == MediaWorkflowType.TRANSCRIBE_TRANSLATE
+    )
+
+
 async def maybe_post_media_translation_quote(
     client: AsyncWebClient,
     task_info: TranscriptionTaskInfo,
@@ -481,6 +632,25 @@ async def maybe_post_media_translation_quote(
     session = await get_media_quote_session(str(quote_id))
     if session is None:
         return False
+
+    workflow = media_workflow_session_from_quote(session)
+    if workflow is not None:
+        from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+        decision = advance_media_workflow(
+            workflow, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
+        )
+        session["channel_id"] = session.get("channel_id") or channel_id
+        session["thread_ts"] = session.get("thread_ts") or thread_ts
+        await execute_media_workflow_decision(
+            client=client,
+            session=session,
+            decision=decision,
+            source_text_length=int(task_info.source_text_length or 0),
+            task_uuid=task_info.task_uuid,
+            duration_ms=task_info.duration_ms or session.get("duration_ms"),
+        )
+        return MediaWorkflowCommand.MARK_DONE not in decision.commands
 
     pipeline_kind = session.get("pipeline_kind") or extra_data.get("pipeline_kind")
     if pipeline_kind not in (
@@ -546,6 +716,14 @@ async def mark_media_quote_done(extra_data: dict[str, Any] | None) -> None:
         await update_media_quote_session(str(quote_id), {"stage": STAGE_DONE})
 
 
+async def mark_media_quote_cancelled(extra_data: dict[str, Any] | None) -> None:
+    if not extra_data or not extra_data.get("workflow_type"):
+        return
+    quote_id = extra_data.get("media_quote_id")
+    if quote_id:
+        await update_media_quote_session(str(quote_id), {"stage": STAGE_CANCELLED})
+
+
 async def handle_transcription_complete(
     client: AsyncWebClient,
     result_file_id: str | None,
@@ -588,6 +766,53 @@ async def handle_transcription_complete(
             # Transcription-only (and pre-Quote2) uploads the source SRT only —
             # do not post AI-translation / reupload copy here.
             extra_data = task_info.extra_data or {}
+            srt_review_quote_id = None
+            quote_id = extra_data.get("media_quote_id")
+            source_review = bool(
+                extra_data.get("workflow_type")
+                and (
+                    configure_srt_review_enabled(extra_data)
+                    or extra_data.get("workflow_type")
+                    == MediaWorkflowType.TRANSCRIBE_TRANSLATE.value
+                )
+                and quote_id
+            )
+            if source_review:
+                review_session = await get_media_quote_session(str(quote_id))
+                if not (review_session or {}).get("auto_proceed"):
+                    srt_review_quote_id = str(quote_id)
+                    await update_media_quote_session(
+                        srt_review_quote_id, {"defer_source_review": True}
+                    )
+            word_file_id = extra_data.get("word_source_file_id")
+            word_file_name = (
+                f"{Path(result_file_name).stem}.docx" if word_file_id else None
+            )
+            quote_key = srt_review_quote_id or (str(quote_id) if quote_id else None)
+            if (
+                word_file_id
+                and word_file_name
+                and quote_key
+                and (
+                    srt_review_quote_id is not None
+                    or extra_data.get("workflow_type")
+                    == MediaWorkflowType.TRANSCRIBE_TRANSLATE.value
+                    or configure_srt_review_enabled(extra_data)
+                )
+            ):
+                # Translate flows and reviewed transcriptions deliver the Word
+                # transcript with the final step: withhold it here and stash it
+                # on the session for the MARK_DONE handler. Anything ending at
+                # transcription still delivers immediately below.
+                await update_media_quote_session(
+                    quote_key,
+                    {
+                        "deferred_word_file_id": str(word_file_id),
+                        "deferred_word_file_name": word_file_name,
+                    },
+                )
+                word_file_id = None
+                word_file_name = None
             await enqueue_transcription_upload(
                 file_id=result_file_id,
                 file_name=result_file_name,
@@ -600,6 +825,9 @@ async def handle_transcription_complete(
                 slack_user_id=extra_data.get("slack_user_id"),
                 enterprise_id=extra_data.get("slack_enterprise_id")
                 or extra_data.get("enterprise_id"),
+                srt_review_quote_id=srt_review_quote_id,
+                word_file_id=word_file_id,
+                word_file_name=word_file_name,
             )
 
 
@@ -663,6 +891,27 @@ async def handle_translation_complete(
                 thread_ts=effective_thread_ts,
             )
             uploaded_count += 1
+            extra = _task_extra_data(task_info)
+            quote_id = extra.get("media_quote_id")
+            if extra.get("workflow_type") and quote_id:
+                review_session = await get_media_quote_session(str(quote_id))
+                if (
+                    review_session
+                    and review_session.get("embed_translated")
+                    and not review_session.get("auto_proceed")
+                ):
+                    from app.slack.media_workflow_actions import _post_srt_file_replace
+
+                    await _post_srt_file_replace(
+                        client,
+                        {
+                            **review_session,
+                            "channel_id": channel_id,
+                            "thread_ts": effective_thread_ts,
+                        },
+                        language=str(target_lang),
+                        file_label=title,
+                    )
 
             if file_path and os.path.exists(file_path):
                 os.unlink(file_path)
@@ -671,8 +920,20 @@ async def handle_translation_complete(
             notify_exception(e, "Error handling translation complete")
             logger.error(f"Error handling translation complete: {e}")
 
+    extra = _task_extra_data(task_info)
     if uploaded_count:
         failed_language_names = await resolve_language_labels(failed_languages)
+        quote_id = extra.get("media_quote_id")
+        review_session = (
+            await get_media_quote_session(str(quote_id))
+            if extra.get("workflow_type") and quote_id
+            else None
+        )
+        review_enabled = bool(
+            review_session
+            and review_session.get("embed_translated")
+            and not review_session.get("auto_proceed")
+        )
         if failed_language_names:
             partial_message = MediaTranslationPartialMessage(failed_language_names)
             await client.chat_postMessage(
@@ -680,21 +941,26 @@ async def handle_translation_complete(
                 text=partial_message.text,
                 thread_ts=effective_thread_ts,
             )
+        elif not review_enabled:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(AI_TRANSLATION_COMPLETE_TEXT),
+                thread_ts=effective_thread_ts,
+            )
+        if extra.get("workflow_type"):
+            await _advance_configure_after_translation(
+                client, extra, channel_id, effective_thread_ts
+            )
         else:
             await client.chat_postMessage(
                 channel=channel_id,
-                text=_("Your file is AI translated and can be downloaded above."),
+                text=_(
+                    "Download the AI-translated subtitle files (SRT) provided above, "
+                    "make your edits, and reupload the edited subtitle files back "
+                    "to the same thread."
+                ),
                 thread_ts=effective_thread_ts,
             )
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=_(
-                "Download the AI-translated subtitle files (SRT) provided above, "
-                "make your edits, and reupload the edited subtitle files back "
-                "to the same thread."
-            ),
-            thread_ts=effective_thread_ts,
-        )
     elif translated_file_ids:
         await client.chat_postMessage(
             channel=channel_id,
@@ -704,6 +970,7 @@ async def handle_translation_complete(
             ),
             thread_ts=effective_thread_ts,
         )
+        await mark_media_quote_cancelled(_task_extra_data(task_info))
 
     # Show token message at the end for translate pipelines
     if (
@@ -821,6 +1088,11 @@ async def handle_transcribe_embed_pipeline(
                 channel_id,
                 effective_thread_ts,
                 is_ibm=is_ibm,
+            )
+        extra = _task_extra_data(task_info)
+        if extra.get("workflow_type"):
+            await _advance_configure_after_embed(
+                client, extra, channel_id, effective_thread_ts
             )
         return True
 

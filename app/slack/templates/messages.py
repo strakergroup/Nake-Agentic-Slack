@@ -23,6 +23,7 @@ from slack_sdk.models.blocks.block_elements import (
 from app.slack.select_options import (
     get_auto_translate_language_options,
 )
+from app.slack.utils import format_error_detail
 from app.translate import _
 
 from ...auth.connector import (
@@ -58,7 +59,7 @@ from .blocks import (
     quote_message_block,
     verify_quote_blocks,
 )
-from .models import NewJobForm
+from .models import NewJobForm, SlackMediaFileRef, slack_media_file_ref
 
 
 class TextMessage:
@@ -3263,6 +3264,90 @@ class MediaEmbedOptionMessage(SlackMessage):
         )
 
 
+AI_TRANSLATION_COMPLETE_TEXT = (
+    "AI translation is complete and your translation is ready to download."
+)
+
+
+def _replace_button(value: str) -> ButtonElement:
+    return ButtonElement(
+        text=PlainTextObject(text=_("Edit and reupload"), emoji=True),
+        action_id="media_srt_replace",
+        value=value,
+    )
+
+
+class MediaSrtReviewMessage(SlackMessage):
+    """Replace control posted next to an uploaded subtitle file."""
+
+    def __init__(
+        self,
+        quote_id: str,
+        *,
+        language: str | None = None,
+        file_label: str | None = None,
+    ) -> None:
+        replace_value = (
+            json.dumps({"quote_id": quote_id, "language": language})
+            if language
+            else quote_id
+        )
+        replace_button = _replace_button(replace_value)
+        blocks: list[dict] = []
+        if file_label:
+            blocks.append(
+                SectionBlock(
+                    text=MarkdownTextObject(
+                        text=format_error_detail(
+                            _("For *{file_label}*:"),
+                            file_label,
+                        )
+                    ),
+                ).to_dict()
+            )
+        blocks.append(ActionsBlock(elements=[replace_button]).to_dict())
+        super().__init__(
+            _("Edit and reupload"),
+            blocks,
+        )
+
+
+class MediaSrtApproveContinueMessage(SlackMessage):
+    def __init__(
+        self,
+        quote_id: str,
+        *,
+        translated: bool = False,
+        include_replace: bool = False,
+    ) -> None:
+        approve_button = ButtonElement(
+            text=PlainTextObject(text=_("Proceed"), emoji=True),
+            action_id="media_srt_approve_continue",
+            value=quote_id,
+            style="primary",
+        )
+        if translated:
+            review_text = _(
+                AI_TRANSLATION_COMPLETE_TEXT + "\n"
+                "Either press *Edit and reupload* to edit and replace a subtitle file,\n"
+                "or press *Proceed* to continue."
+            )
+        else:
+            review_text = _(
+                "Either press *Edit and reupload* to edit and replace the transcript,\n"
+                "or press *Proceed* to continue."
+            )
+        review_section = SectionBlock(text=MarkdownTextObject(text=review_text))
+        elements: list[ButtonElement] = [approve_button]
+        if include_replace:
+            elements.insert(0, _replace_button(quote_id))
+        actions = ActionsBlock(elements=elements)
+        super().__init__(
+            review_text,
+            [review_section.to_dict(), actions.to_dict()],
+        )
+
+
 class DocumentMTJobMessage(SlackMessage):
     """Message to allow user to select language and submit for machine translation"""
 
@@ -3327,7 +3412,7 @@ class JobTranscribedEventMessage(SlackMessage):
             SectionBlock(
                 text=MarkdownTextObject(
                     text=_(
-                        "We have transcribed your file and the SRT file can be downloaded."
+                        "We have transcribed your file(s) and the transcript can be downloaded."
                     )
                 )
             )
@@ -3349,7 +3434,7 @@ class JobTranscribedEventMessage(SlackMessage):
 
         super().__init__(
             _(
-                "Your video {source_file_name} has been transcribed. SRT file available below."
+                "Your video {source_file_name} has been transcribed. Transcript available below."
             ),
             [block.to_dict() for block in blocks],
         )
@@ -3400,40 +3485,93 @@ class MediaEmbeddingPartialMessage(TextMessage):
         )
 
 
+def _legacy_media_option_blocks(
+    action_value: str, show_embed_option: bool
+) -> list[Block]:
+    """Pre-Configure media buttons, kept for users without the Configure UI."""
+    blocks: list[Block] = [
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "*Transcribe Audio* - Transcribe spoken media content to text in the source language."
+                )
+            ),
+            accessory=ButtonElement(
+                text=PlainTextObject(text=_("Transcribe"), emoji=True),
+                action_id="video_transcribe_only",
+                value=action_value,
+                style="primary",
+            ),
+        ),
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "*Transcribe & AI Translate* - Transcribe media content and instantly translate the text into your chosen target language(s) using AI Translation."
+                )
+            ),
+            accessory=ButtonElement(
+                text=PlainTextObject(text=_("Transcribe & AI Translate"), emoji=True),
+                action_id="video_transcribe_translate",
+                value=action_value,
+                style="primary",
+            ),
+        ),
+    ]
+    if show_embed_option:
+        blocks.append(
+            SectionBlock(
+                text=MarkdownTextObject(
+                    text=_(
+                        "*Embed Subtitles* - Transcribe, translate, and automatically embed the translated text as subtitles into your media file."
+                    )
+                ),
+                accessory=ButtonElement(
+                    text=PlainTextObject(text=_("Embed Subtitles"), emoji=True),
+                    action_id="video_embed_subtitles",
+                    value=action_value,
+                    style="primary",
+                ),
+            )
+        )
+    return blocks
+
+
 class VideoOptionsMessage(SlackMessage):
-    """Message shown when video(s) are detected, offering processing options.
+    """Message shown when video(s) are detected.
 
-    Shows action buttons per the Figma design:
-    1. Transcribe Audio - Transcription only in source language
-    2. Transcribe & AI Translate - Transcription with translation
-    3. Embed Subtitles - Full package with embedded subtitles (video files only)
-
-    Supports multiple files - all files are processed together.
-    The Embed Subtitles option is hidden for audio-only files (mp3, wav, etc.)
+    With ``use_configure`` (RAY-81819, Verify Admin/Owner) one Configure entry
+    opens a modal for workflow type, languages, and embedding. Without it the
+    legacy Transcribe / Transcribe & AI Translate / Embed Subtitles buttons are
+    shown instead. Embed options are hidden for audio-only files (mp3, wav).
     """
 
     def __init__(
         self,
         channel_id: str,
-        files: list[dict],  # [{file_id, file_name, duration_ms}, ...]
+        files: list[SlackMediaFileRef],
         thread_ts: str | None = None,
         is_ibm_enterprise: bool = False,
         tokens: int | None = None,
         show_embed_option: bool = True,
+        use_configure: bool = True,
     ) -> None:
-        # Store files info in action value
         action_value = json.dumps(
             {
                 "channel_id": channel_id,
-                "files": files,
+                "files": [
+                    slack_media_file_ref(
+                        file_id=media_file["file_id"],
+                        file_name=media_file["file_name"],
+                    )
+                    for media_file in files
+                ],
                 "thread_ts": thread_ts,
+                "show_embed_option": show_embed_option,
             }
         )
 
-        # Build blocks using SDK where possible
         blocks: list[Block] = []
 
-        # Show token balance for non-IBM users
         if not is_ibm_enterprise and tokens is not None:
             token_context = ContextBlock(
                 elements=[
@@ -3444,57 +3582,24 @@ class VideoOptionsMessage(SlackMessage):
             )
             blocks.append(token_context)
 
-        # Transcribe Audio option
-        transcribe_button = ButtonElement(
-            text=PlainTextObject(text=_("Transcribe"), emoji=True),
-            action_id="video_transcribe_only",
-            value=action_value,
-            style="primary",
-        )
-        transcribe_section = SectionBlock(
-            text=MarkdownTextObject(
-                text=_(
-                    "*Transcribe Audio* - Transcribe spoken media content to text in the source language."
-                )
-            ),
-            accessory=transcribe_button,
-        )
-        blocks.append(transcribe_section)
-
-        # Transcribe & AI Translate option
-        translate_button = ButtonElement(
-            text=PlainTextObject(text=_("Transcribe & AI Translate"), emoji=True),
-            action_id="video_transcribe_translate",
-            value=action_value,
-            style="primary",
-        )
-        translate_section = SectionBlock(
-            text=MarkdownTextObject(
-                text=_(
-                    "*Transcribe & AI Translate* - Transcribe media content and instantly translate the text into your chosen target language(s) using AI Translation."
-                )
-            ),
-            accessory=translate_button,
-        )
-        blocks.append(translate_section)
-
-        # Embed Subtitles option - only shown for video files, not audio-only
-        if show_embed_option:
-            embed_button = ButtonElement(
-                text=PlainTextObject(text=_("Embed Subtitles"), emoji=True),
-                action_id="video_embed_subtitles",
+        if use_configure:
+            configure_button = ButtonElement(
+                text=PlainTextObject(text=_("Select services"), emoji=True),
+                action_id="video_configure_media",
                 value=action_value,
                 style="primary",
             )
-            embed_section = SectionBlock(
+            configure_section = SectionBlock(
                 text=MarkdownTextObject(
                     text=_(
-                        "*Embed Subtitles* - Transcribe, translate, and automatically embed the translated text as subtitles into your media file."
+                        "Press the *Select services* button to select the media service(s) needed."
                     )
                 ),
-                accessory=embed_button,
+                accessory=configure_button,
             )
-            blocks.append(embed_section)
+            blocks.append(configure_section)
+        else:
+            blocks.extend(_legacy_media_option_blocks(action_value, show_embed_option))
 
         super().__init__(
             _("Media processing options"),

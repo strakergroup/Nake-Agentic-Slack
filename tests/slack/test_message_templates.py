@@ -27,10 +27,13 @@ from app.slack.templates.messages import (
     JobCreationMessage,
     JobStatusNoIdMessage,
     JobTargetsNoIdMessage,
+    JobTranscribedEventMessage,
     LoginMessage,
     LogoutMessage,
     MachineTranslationMessage,
     MediaEmbedOptionMessage,
+    MediaSrtApproveContinueMessage,
+    MediaSrtReviewMessage,
     NewJobMessage,
     OnboardingMessage,
     RequiresMtTokenMessage,
@@ -783,9 +786,9 @@ class TestHelpMessage:
 
 
 class TestVideoOptionsMessage:
-    """RAY-79726: Embed Subtitles option copy."""
+    """RAY-81819: single Configure entry replaces the three media buttons."""
 
-    def test_embed_subtitles_description_uses_translated_text(self):
+    def test_configure_button_replaces_three_pipeline_buttons(self):
         message = VideoOptionsMessage(
             channel_id="C123",
             files=[
@@ -797,11 +800,57 @@ class TestVideoOptionsMessage:
             ],
             show_embed_option=True,
         )
-        assert "final translated text" not in json.dumps(message.blocks)
+        assert _blocks_contain_action(message.blocks, "video_configure_media")
+        assert not _blocks_contain_action(message.blocks, "video_transcribe_only")
+        assert not _blocks_contain_action(message.blocks, "video_transcribe_translate")
+        assert not _blocks_contain_action(message.blocks, "video_embed_subtitles")
         assert _blocks_contain_text(
             message.blocks,
-            "*Embed Subtitles* - Transcribe, translate, and automatically embed the translated text as subtitles into your media file.",
+            "Press the *Select services* button to select the media service(s) needed.",
         )
+        accessory = next(
+            block["accessory"]
+            for block in message.blocks
+            if block.get("accessory", {}).get("action_id") == "video_configure_media"
+        )
+        assert accessory["text"]["text"] == "Select services"
+
+    def test_configure_payload_files_are_id_and_name_only(self):
+        message = VideoOptionsMessage(
+            channel_id="C123",
+            files=[
+                {
+                    "file_id": "F1",
+                    "file_name": "clip.mp4",
+                    "duration_ms": 1000,
+                }
+            ],
+        )
+        configure = next(
+            block
+            for block in message.blocks
+            if block.get("accessory", {}).get("action_id") == "video_configure_media"
+        )
+        payload = json.loads(configure["accessory"]["value"])
+        assert payload["files"] == [{"file_id": "F1", "file_name": "clip.mp4"}]
+
+    def test_non_admin_gets_legacy_three_pipeline_buttons(self):
+        message = VideoOptionsMessage(
+            channel_id="C123",
+            files=[
+                {
+                    "file_id": "F1",
+                    "file_name": "clip.mp4",
+                    "duration_ms": 1000,
+                }
+            ],
+            show_embed_option=True,
+            use_configure=False,
+        )
+        assert not _blocks_contain_action(message.blocks, "video_configure_media")
+        assert _blocks_contain_action(message.blocks, "video_transcribe_only")
+        assert _blocks_contain_action(message.blocks, "video_transcribe_translate")
+        assert _blocks_contain_action(message.blocks, "video_embed_subtitles")
 
 
 class TestNewJobMessage:
@@ -1281,6 +1330,79 @@ class TestMediaEmbedOptionMessage:
         assert message.blocks[0]["accessory"]["type"] == "button"
         assert message.blocks[0]["accessory"]["action_id"] == "video_embed_subtitles"
         assert message.blocks[0]["accessory"]["value"] == action_value
+
+
+class TestMediaSrtReviewMessage:
+    def test_file_replace_has_replace_without_approve(self):
+        message = MediaSrtReviewMessage(
+            "q-1", language="fi", file_label="clip_Finnish.srt"
+        )
+        assert _blocks_contain_action(message.blocks, "media_srt_replace")
+        assert not _blocks_contain_action(message.blocks, "media_srt_approve_continue")
+        dumped = json.dumps(message.blocks)
+        assert "Edit and reupload" in dumped
+        assert "clip_Finnish.srt" in dumped
+        assert "Approve & Continue" not in dumped
+        assert "Review" not in dumped
+        replace = next(
+            el
+            for block in message.blocks
+            for el in block.get("elements", [])
+            if el.get("action_id") == "media_srt_replace"
+        )
+        assert json.loads(replace["value"]) == {"quote_id": "q-1", "language": "fi"}
+
+    def test_source_replace_is_button_only(self):
+        message = MediaSrtReviewMessage("q-1")
+        dumped = json.dumps(message.blocks)
+        assert _blocks_contain_action(message.blocks, "media_srt_replace")
+        assert "Review" not in dumped
+        assert "transcript" not in dumped.lower()
+
+    def test_final_approve_has_approve_without_replace(self):
+        message = MediaSrtApproveContinueMessage("q-1")
+        assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
+        assert not _blocks_contain_action(message.blocks, "media_srt_replace")
+        dumped = json.dumps(message.blocks)
+        assert "Proceed" in dumped
+        assert "Approve & Continue" not in dumped
+        assert "Edit and reupload" in dumped
+        assert "Either press" in dumped
+        assert "SRT" not in dumped
+
+    def test_translated_approve_uses_single_ai_translated_message(self):
+        message = MediaSrtApproveContinueMessage("q-1", translated=True)
+        dumped = json.dumps(message.blocks)
+        assert (
+            "AI translation is complete and your translation is ready to download."
+            in dumped
+        )
+        assert "Edit and reupload" in dumped
+        assert "Proceed" in dumped
+        assert "Approve & Continue" not in dumped
+        assert "Either press" in dumped
+        assert "Review *" not in dumped
+        assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
+        assert not _blocks_contain_action(message.blocks, "media_srt_replace")
+
+    def test_source_review_combines_both_buttons_in_one_message(self):
+        message = MediaSrtApproveContinueMessage("q-1", include_replace=True)
+        dumped = json.dumps(message.blocks)
+        assert _blocks_contain_action(message.blocks, "media_srt_replace")
+        assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
+        assert "Proceed" in dumped
+        assert "Either press" in dumped
+        assert "SRT" not in dumped
+
+
+class TestJobTranscribedEventMessage:
+    def test_transcribed_message_uses_file_plural(self):
+        message = JobTranscribedEventMessage(source_file_name="clip.mp4")
+        dumped = json.dumps(message.blocks)
+        assert (
+            "We have transcribed your file(s) and the transcript can be downloaded."
+            in dumped
+        )
 
 
 class TestBatchAndFileListMessages:

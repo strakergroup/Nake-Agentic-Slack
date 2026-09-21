@@ -6,7 +6,10 @@ from copy import deepcopy
 from typing import Any, Iterable
 
 from app.slack.ai_quote_display import ai_language_cost_display_amounts
-from app.slack.media_quotes import media_translation_tokens
+from app.slack.media_quotes import (
+    media_translation_tokens,
+    translated_embed_language_detail,
+)
 from app.slack.templates.blocks import (
     _format_evaluate_quote_cost,
     _format_evaluate_quote_usd,
@@ -16,6 +19,8 @@ from app.translate import _
 AI_QUOTE_ADJUST_ACTION_ID = "evaluation_ai_quote_adjust"
 AI_QUOTE_ADJUST_CALLBACK_ID = "evaluation_ai_quote_adjust_submit"
 AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID = "evaluation_ai_quote_language_selection"
+AI_QUOTE_EMBED_SELECTION_ACTION_ID = "evaluation_ai_quote_embed_selection"
+EMBED_SOURCE_VALUE = "embed_source"
 
 
 def pair_key(file_uuid: str, language_uuid: str) -> str:
@@ -521,6 +526,26 @@ def selected_pairs_from_view(view: dict[str, Any]) -> list[str]:
     )
 
 
+def media_embed_toggles_from_view(
+    view: dict[str, Any],
+) -> tuple[bool, set[str]] | None:
+    """Read media embedding toggles from a Quote2 Adjust modal view.
+
+    Returns ``(embed_source, embed_pair_keys)`` where pair keys use the same
+    ``file:language`` values as the language checkboxes, or None when the
+    view has no embedding toggle block (other quote kinds).
+    """
+    blocks = (view.get("state") or {}).get("values", {})
+    if not any(
+        AI_QUOTE_EMBED_SELECTION_ACTION_ID in block_data
+        for block_data in blocks.values()
+    ):
+        return None
+    selected = set(selected_values(view, AI_QUOTE_EMBED_SELECTION_ACTION_ID))
+    pairs = {value for value in selected if value != EMBED_SOURCE_VALUE}
+    return EMBED_SOURCE_VALUE in selected, pairs
+
+
 def quote_message_context_from_body(
     body: dict[str, Any],
 ) -> tuple[str | None, str | None]:
@@ -564,17 +589,20 @@ def sync_checkbox_initial_options_from_state(view: dict[str, Any]) -> None:
     re-checks every file/language and Accept Quote submits the full set.
     """
     selected = set(selected_pairs_from_view(view))
+    embed_selected = set(selected_values(view, AI_QUOTE_EMBED_SELECTION_ACTION_ID))
     for block in view.get("blocks") or []:
         for element in block.get("elements") or []:
             if element.get("type") != "checkboxes":
                 continue
-            if element.get("action_id") != AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID:
+            if element.get("action_id") == AI_QUOTE_EMBED_SELECTION_ACTION_ID:
+                wanted = embed_selected
+            elif element.get("action_id") == AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID:
+                wanted = selected
+            else:
                 continue
             options = element.get("options") or []
             initial_options = [
-                option
-                for option in options
-                if str(option.get("value") or "") in selected
+                option for option in options if str(option.get("value") or "") in wanted
             ]
             if initial_options:
                 element["initial_options"] = initial_options
@@ -588,6 +616,9 @@ def update_modal_cost_blocks(
     ai_tokens: int,
     pdf_tokens: int,
     language_costs: list[dict[str, Any]] | None = None,
+    embed_tokens: int = 0,
+    embed_language_count: int = 0,
+    source_embed_tokens: int = 0,
 ) -> dict[str, Any]:
     """Update cost blocks and keep checkbox initial options in sync with state.
 
@@ -621,10 +652,21 @@ def update_modal_cost_blocks(
             block["text"]["text"] = (
                 f"*{_('PDF conversion')}:* {_format_evaluate_quote_cost(pdf_tokens)}"
             )
+        elif block_id == "ai_quote_embed_cost_block":
+            block["text"]["text"] = (
+                f"*{_('Translated subtitle embedding')}:* "
+                f"{translated_embed_language_detail(embed_language_count)} · "
+                f"{_format_evaluate_quote_cost(embed_tokens)}"
+            )
+        elif block_id == "ai_quote_source_embed_cost_block":
+            block["text"]["text"] = (
+                f"*{_('Source subtitle embedding')}:* "
+                f"{_format_evaluate_quote_cost(source_embed_tokens)}"
+            )
         elif block_id == "total_cost_block":
             block["text"]["text"] = (
                 f"*{_('Total cost')}:* "
-                f"{_format_evaluate_quote_cost(ai_tokens + pdf_tokens)}"
+                f"{_format_evaluate_quote_cost(ai_tokens + pdf_tokens + source_embed_tokens + embed_tokens)}"
             )
         if not display_by_pair:
             continue

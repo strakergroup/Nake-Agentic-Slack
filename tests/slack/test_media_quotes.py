@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 from unittest.mock import AsyncMock, patch
 
@@ -16,6 +17,7 @@ from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
     STAGE_AWAITING_TRANSLATION_ACCEPT,
     build_quote1_line_items,
+    build_quote2_line_items,
     embedding_tokens_for_duration,
     media_quote_blocks,
     media_quote_key,
@@ -88,6 +90,102 @@ def test_quote1_line_items_embed_only():
     assert items[0]["tokens"] == 30
 
 
+def test_quote1_omits_source_embed_for_translate_pipeline_even_when_flag_set():
+    items = build_quote1_line_items(
+        pipeline_kind=PIPELINE_TRANSCRIBE_TRANSLATE,
+        duration_ms=60_000,
+        target_count=3,
+        embed_source=True,
+    )
+    assert [item["label"] for item in items] == ["Transcription"]
+    assert items[0]["tokens"] == 100
+
+
+def test_quote1_keeps_source_embed_for_transcribe_only_when_flag_set():
+    items = build_quote1_line_items(
+        pipeline_kind=PIPELINE_TRANSCRIBE,
+        duration_ms=60_000,
+        target_count=1,
+        embed_source=True,
+    )
+    assert [item["label"] for item in items] == [
+        "Transcription",
+        "Source subtitle embedding",
+    ]
+    assert items[0]["tokens"] == 100
+    assert items[1]["tokens"] == 30
+
+
+def test_quote1_omits_source_embed_when_flag_false_even_for_legacy_embed_pipeline():
+    items = build_quote1_line_items(
+        pipeline_kind=PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
+        duration_ms=60_000,
+        target_count=2,
+        embed_source=False,
+    )
+    assert len(items) == 1
+    assert items[0]["tokens"] == 100
+
+
+def test_quote2_includes_translated_embed_when_flag_set():
+    items = build_quote2_line_items(
+        source_text_length=1000,
+        target_count=2,
+        duration_ms=60_000,
+        embed_translated=True,
+    )
+    assert [item["label"] for item in items] == [
+        "AI Translation",
+        "Translated subtitle embedding",
+    ]
+    assert items[0]["tokens"] == media_translation_tokens(1000, 2)
+    assert items[1]["tokens"] == 60
+
+
+def test_quote2_omits_translated_embed_when_flag_false():
+    items = build_quote2_line_items(
+        source_text_length=1000,
+        target_count=2,
+        duration_ms=60_000,
+        embed_translated=False,
+    )
+    assert len(items) == 1
+    assert items[0]["tokens"] == media_translation_tokens(1000, 2)
+
+
+def test_quote2_includes_source_embed_before_translated_embed():
+    items = build_quote2_line_items(
+        source_text_length=1000,
+        target_count=2,
+        duration_ms=60_000,
+        embed_source=True,
+        embed_translated=True,
+    )
+    assert [item["label"] for item in items] == [
+        "AI Translation",
+        "Source subtitle embedding",
+        "Translated subtitle embedding",
+    ]
+    assert items[0]["tokens"] == media_translation_tokens(1000, 2)
+    assert items[1]["tokens"] == 30
+    assert items[2]["tokens"] == 60
+
+
+def test_quote2_includes_source_embed_without_translated_embed():
+    items = build_quote2_line_items(
+        source_text_length=1000,
+        target_count=2,
+        duration_ms=60_000,
+        embed_source=True,
+        embed_translated=False,
+    )
+    assert [item["label"] for item in items] == [
+        "AI Translation",
+        "Source subtitle embedding",
+    ]
+    assert items[1]["tokens"] == 30
+
+
 def test_media_quote_blocks_include_accept_cancel():
     session = {
         "quote_id": "q-1",
@@ -131,10 +229,10 @@ def test_media_quote1_intro_explains_transcription_before_ai_translate():
         actions=False,
     )
     assert "must first be transcribed" in blocks[1]["text"]["text"]
-    assert "transcription service charges will apply" in blocks[1]["text"]["text"]
+    assert "transcription service charge will apply" in blocks[1]["text"]["text"]
 
 
-def test_media_quote2_intro_matches_document_ai_copy():
+def test_media_quote2_omits_translation_intro():
     from app.slack.templates.blocks import media_translation_quote_blocks
 
     session = {
@@ -150,10 +248,11 @@ def test_media_quote2_intro_matches_document_ai_copy():
         "total_tokens": 50,
     }
     blocks = media_translation_quote_blocks(session, actions=False)
-    assert (
-        blocks[1]["text"]["text"]
-        == "Running the AI translation will incur the following cost:"
+    assert "Running the AI translation will incur the following cost:" not in str(
+        blocks
     )
+    assert blocks[0]["type"] == "header"
+    assert blocks[1]["type"] == "divider"
 
 
 def test_media_quote_blocks_always_show_usd():
@@ -244,3 +343,53 @@ async def test_create_translation_quote_session():
         assert session["stage"] == STAGE_AWAITING_TRANSLATION_ACCEPT
         assert session["total_tokens"] == media_translation_tokens(1000, 2)
         assert session["line_items"][0]["label"]
+
+
+@pytest.mark.asyncio
+async def test_save_media_quote_session_appends_thread_quote_ids():
+    from app.slack.media_quotes import (
+        media_quote_thread_key,
+        save_media_quote_session,
+    )
+
+    store: dict[str, str] = {}
+
+    async def fake_get(key):
+        return store.get(key)
+
+    async def fake_set(key, value, ex=None):
+        store[key] = value
+
+    with patch("app.slack.media_quotes.redis_conn") as mock_redis:
+        mock_redis.get = AsyncMock(side_effect=fake_get)
+        mock_redis.set = AsyncMock(side_effect=fake_set)
+        await save_media_quote_session(
+            {"quote_id": "q1", "channel_id": "C1", "thread_ts": "1.2"}
+        )
+        await save_media_quote_session(
+            {"quote_id": "q2", "channel_id": "C1", "thread_ts": "1.2"}
+        )
+
+    assert json.loads(store[media_quote_thread_key("C1", "1.2")]) == ["q1", "q2"]
+
+
+@pytest.mark.asyncio
+async def test_thread_sessions_read_legacy_plain_quote_id():
+    from app.slack.media_quotes import get_media_quote_sessions_for_thread
+
+    sessions = {
+        "q-old": {"quote_id": "q-old", "file_name": "clip.mp4"},
+    }
+
+    async def fake_get(key):
+        if key.endswith(":C1:1.2"):
+            return "q-old"
+        if ":media-quote:q-old" in str(key):
+            return json.dumps(sessions["q-old"])
+        return None
+
+    with patch("app.slack.media_quotes.redis_conn") as mock_redis:
+        mock_redis.get = AsyncMock(side_effect=fake_get)
+        loaded = await get_media_quote_sessions_for_thread("C1", "1.2")
+
+    assert [session["quote_id"] for session in loaded] == ["q-old"]

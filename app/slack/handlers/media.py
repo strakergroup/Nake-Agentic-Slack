@@ -15,6 +15,7 @@ from app.slack.listener_actions import (
     quote_existing_srt_embed_task,
     resolve_media_thread_ts,
 )
+from app.slack.media_configure import media_configure_enabled_for_user
 from app.slack.media_duration import file_info_with_quote_duration
 from app.slack.media_quote_actions import (
     accept_media_quote,
@@ -37,6 +38,7 @@ from app.slack.modal_trigger import (
     status_modal,
 )
 from app.slack.templates.views import (
+    video_configure_media_modal,
     video_embed_subtitles_modal,
     video_transcribe_translate_modal,
 )
@@ -231,7 +233,7 @@ async def handle_video_transcribe_translate(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return
@@ -288,7 +290,7 @@ async def handle_video_embed_subtitles(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return
@@ -304,3 +306,131 @@ async def handle_video_embed_subtitles(
     except Exception as e:
         notify_exception(e)
         await safe_views_update(client, view_id, request_error_modal())
+
+
+async def handle_video_configure_media(
+    context: RayContext,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
+    """Open the unified Configure media modal."""
+    assert action is not None
+
+    action_data = json.loads(action.get("value", "{}"))
+    thread_ts = resolve_media_thread_ts(action_data, body)
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        if not await require_ray_client(context, allow_org_billing=True):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to continue."),
+                ),
+            )
+            return
+        if not await media_configure_enabled_for_user(context["ray"]):
+            # The button sits in a channel message anyone can click, so the
+            # poster-side gate is re-checked here against the actual clicker.
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Not available yet"),
+                    _(
+                        "Selecting media services is still being rolled out. "
+                        "Ask a workspace admin to start this request."
+                    ),
+                ),
+            )
+            return
+        await safe_views_update(
+            client,
+            view_id,
+            video_configure_media_modal(
+                channel_id=action_data.get("channel_id", context.get("channel_id", "")),
+                files=action_data["files"],
+                thread_ts=thread_ts,
+                show_embed_option=bool(action_data.get("show_embed_option", True)),
+            ),
+        )
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
+
+
+async def handle_video_configure_workflow_type(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+):
+    """Rebuild the Configure modal when the workflow type radio changes."""
+    from app.slack.media_configure import (
+        _embedding_checkbox_selected,
+        _multi_select_values,
+        word_transcript_selection,
+    )
+
+    view = body["view"]
+    metadata = json.loads(view.get("private_metadata") or "{}")
+    selected = (action.get("selected_option") or {}).get("value")
+    values = (view.get("state") or {}).get("values") or {}
+    await client.views_update(
+        view_id=view["id"],
+        view=video_configure_media_modal(
+            channel_id=metadata.get("channel_id", ""),
+            files=metadata.get("files") or [],
+            thread_ts=metadata.get("thread_ts"),
+            show_embed_option=bool(metadata.get("show_embed_option", True)),
+            show_translate_options=selected == "transcribe_translate",
+            embed_source=_embedding_checkbox_selected(values, "embed_source"),
+            embed_translated=_embedding_checkbox_selected(values, "embed_translated"),
+            word_transcript_format=word_transcript_selection(values),
+            selected_file_ids=_multi_select_values(
+                values, "selected_file", "file_display"
+            ),
+            selected_language_values=_multi_select_values(
+                values, "target_languages", "language_mt_options"
+            ),
+        ),
+    )
+
+
+async def handle_media_srt_approve_continue(
+    client: AsyncWebClient,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+):
+    assert action is not None
+    from app.slack.media_workflow_actions import (
+        handle_media_srt_approve_continue as approve,
+    )
+
+    await approve(client=client, action=action, context=context)
+
+
+async def handle_media_srt_replace(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Optional[Dict[str, Any]],
+):
+    assert action is not None
+    from app.slack.media_workflow_actions import handle_media_srt_replace_open
+
+    await handle_media_srt_replace_open(client=client, body=body, action=action)
+
+
+async def handle_media_srt_replace_submit(
+    view: Optional[dict],
+    context: RayContext,
+    client: AsyncWebClient,
+):
+    assert view is not None
+    from app.slack.media_workflow_actions import (
+        handle_media_srt_replace_submit as submit,
+    )
+
+    await submit(view=view, client=client, context=context)

@@ -67,7 +67,7 @@ async def _handle_translate_settings_command(
             variation=LoginMessage.CHANNEL_TRANSLATION_SETTINGS,
         ):
             login = context.get("login_prompt")
-            message = _("Please sign in to LanguageCloud to continue.")
+            message = _("Please sign in to continue.")
             if isinstance(login, LoginMessage):
                 login = login.with_variation(LoginMessage.CHANNEL_TRANSLATION_SETTINGS)
                 if login.blocks:

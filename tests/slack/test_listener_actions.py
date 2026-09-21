@@ -361,6 +361,16 @@ class TestThreadMediaEmbedOption:
                 "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
             ) as mock_require,
             patch(
+                "app.slack.listener_actions.get_media_quote_session_for_thread",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.slack.listener_actions.get_media_quote_sessions_for_thread",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
                 "app.slack.listener_actions.quote_existing_srt_embed_task",
                 new_callable=AsyncMock,
             ) as mock_quote,
@@ -410,9 +420,21 @@ class TestThreadMediaEmbedOption:
             "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
         }
 
-        with patch(
-            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
-        ) as mock_require:
+        with (
+            patch(
+                "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+            ) as mock_require,
+            patch(
+                "app.slack.listener_actions.get_media_quote_session_for_thread",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.slack.listener_actions.get_media_quote_sessions_for_thread",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
             mock_require.return_value = True
             handled = await maybe_show_thread_media_embed_option(
                 client, context, message

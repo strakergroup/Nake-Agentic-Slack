@@ -87,6 +87,12 @@ from .bot_translation import (
 )
 from .bot_translation_limits import can_translate_bot_message
 from .evaluation_quotes import job_is_human_translation_quote
+from .media_configure import media_configure_enabled_for_user
+from .media_quotes import (
+    get_media_quote_session_for_thread,
+    get_media_quote_sessions_for_thread,
+)
+from .media_workflow_actions import apply_thread_srt_review_replace
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
     AIHelperMessage,
@@ -117,7 +123,11 @@ from .templates.messages import (
     VerifyHelperMessage,
     VideoOptionsMessage,
 )
-from .templates.models import NewJobForm, build_human_translation_reference
+from .templates.models import (
+    NewJobForm,
+    build_human_translation_reference,
+    slack_media_file_ref,
+)
 from .utils import format_strings_display
 from .web import (
     download_file,
@@ -138,6 +148,7 @@ VIDEO_ONLY_TYPES = ["mp4", "mpeg", "webm"]
 
 MEDIA_ACTION_IDS = frozenset(
     {
+        "video_configure_media",
         "video_transcribe_only",
         "video_transcribe_translate",
         "video_embed_subtitles",
@@ -450,7 +461,7 @@ def _extract_media_files_from_blocks(root_message: dict[str, Any]) -> list[dict]
         files = payload.get("files")
         if files:
             return [
-                {"file_id": f["file_id"], "file_name": f["file_name"]}
+                slack_media_file_ref(file_id=f["file_id"], file_name=f["file_name"])
                 for f in files
                 if f.get("file_id") and f.get("file_name")
             ]
@@ -483,7 +494,7 @@ def build_thread_media_embed_action_value(
         if not file_id or not file_name:
             continue
 
-        media_files.append({"file_id": file_id, "file_name": file_name})
+        media_files.append(slack_media_file_ref(file_id=file_id, file_name=file_name))
 
     if not media_files:
         media_files = _extract_media_files_from_blocks(root_message)
@@ -554,6 +565,72 @@ async def maybe_show_thread_media_embed_option(
     if not channel_id or not await require_ray_client(context, allow_org_billing=True):
         return False
 
+    sessions = await get_media_quote_sessions_for_thread(channel_id, thread_ts)
+    if not sessions:
+        one = await get_media_quote_session_for_thread(channel_id, thread_ts)
+        sessions = [one] if one else []
+    subtitle_file = next(
+        (file for file in message.get("files", []) if is_srt_file(file)),
+        None,
+    )
+    if sessions and subtitle_file is not None:
+        from app.media.media_workflow import (
+            MediaWorkflowStage,
+            media_workflow_session_from_quote,
+        )
+
+        in_flight = False
+        review_mismatch = False
+        for review_session in sessions:
+            workflow = media_workflow_session_from_quote(review_session)
+            if workflow is None or workflow.stage in (
+                MediaWorkflowStage.DONE,
+                MediaWorkflowStage.CANCELLED,
+            ):
+                continue
+            in_flight = True
+            if workflow.stage in (
+                MediaWorkflowStage.AWAITING_SOURCE_REVIEW,
+                MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
+            ) and await apply_thread_srt_review_replace(
+                client=client,
+                session=review_session,
+                slack_file_id=str(subtitle_file["id"]),
+                uploaded_name=str(
+                    subtitle_file.get("name")
+                    or subtitle_file.get("title")
+                    or "subtitles.srt"
+                ),
+                acting_user_id=str(context["user_id"]),
+                context=context,
+            ):
+                return True
+            if workflow.stage in (
+                MediaWorkflowStage.AWAITING_SOURCE_REVIEW,
+                MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
+            ):
+                review_mismatch = True
+        if review_mismatch:
+            await client.chat_postMessage(
+                channel=str(sessions[-1].get("channel_id") or channel_id),
+                text=_(
+                    "That file doesn't match the transcript under review. "
+                    "Use *Edit and reupload* under the file you edited."
+                ),
+                thread_ts=thread_ts,
+            )
+            return True
+        if in_flight:
+            await client.chat_postMessage(
+                channel=str(sessions[-1].get("channel_id") or channel_id),
+                text=_(
+                    "Finish the current media request before embedding a different SRT "
+                    "in this thread."
+                ),
+                thread_ts=thread_ts,
+            )
+            return True
+
     root_message = await get_thread_root_message(client, channel_id, thread_ts)
     if not root_message:
         return False
@@ -599,17 +676,11 @@ async def respond_to_message(
         is_ibm = is_ibm_enterprise(context.enterprise_id)
         for file in message["files"]:
             if is_video_file(file):
-                file_info = await client.files_info(file=file["id"])
-                duration_ms = file_info["file"].get("duration_ms", 0)
-                # Default to 1 minute if duration couldn't be detected
-                if not duration_ms:
-                    duration_ms = 60000
                 video_files.append(
-                    {
-                        "file_id": file["id"],
-                        "file_name": file_info["file"]["name"],
-                        "duration_ms": duration_ms,
-                    }
+                    slack_media_file_ref(
+                        file_id=file["id"],
+                        file_name=file.get("name") or file.get("title") or file["id"],
+                    )
                 )
             else:
                 if not validate_file_type(file["name"]):
@@ -646,6 +717,7 @@ async def respond_to_message(
                 is_ibm_enterprise=is_ibm,
                 tokens=tokens,
                 show_embed_option=has_embeddable_video,
+                use_configure=await media_configure_enabled_for_user(context["ray"]),
             )
             await context.say(
                 text=video_msg.text,

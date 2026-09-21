@@ -53,11 +53,15 @@ from ..ray.events.logging import (
     post_notification_ephemeral,
 )
 from ..ray.events.media_pipeline_events import (
+    configure_source_embed_continues_translation,
+    continue_configure_after_failed_source_embed,
     fail_media_submissions,
     get_language_name_by_uuid,
     handle_transcribe_embed_pipeline,
     handle_transcription_complete,
     handle_translation_complete,
+    is_configure_source_embed_job,
+    mark_media_quote_cancelled,
     mark_media_quote_done,
     mark_stage_processed,
     maybe_post_media_translation_quote,
@@ -129,6 +133,7 @@ from ..slack.templates.messages import (
 )
 from ..slack.utils import (
     format_callback_error,
+    format_error_detail,
     order_translations_by_target_language_order,
 )
 
@@ -427,6 +432,7 @@ async def ray_events(
                         thread_ts=thread_ts,
                     )
                     await fail_media_submissions(extra_data)
+                    await mark_media_quote_cancelled(extra_data)
                     return
 
                 # Get channel and thread info
@@ -518,6 +524,7 @@ async def ray_events(
                         thread_ts=thread_ts,
                     )
                     await fail_media_submissions(extra_data)
+                    await mark_media_quote_cancelled(extra_data)
                     return
 
                 # Get channel and thread info
@@ -541,6 +548,7 @@ async def ray_events(
                         thread_ts=thread_ts,
                     )
                     await fail_media_submissions(extra_data)
+                    await mark_media_quote_cancelled(extra_data)
                     return
 
                 # Track processed stages for reference
@@ -573,7 +581,7 @@ async def ray_events(
                     if task_info.pipeline_type in (
                         "translate_only",
                         "transcribe_translate",
-                    ):
+                    ) and not extra_data.get("workflow_type"):
                         await update_submission_status(extra_data)
                         await mark_media_quote_done(extra_data)
 
@@ -617,7 +625,37 @@ async def ray_events(
                         text=format_callback_error("embedding", error_msg),
                         thread_ts=thread_ts,
                     )
+                    if is_configure_source_embed_job(extra_data):
+                        continues = configure_source_embed_continues_translation(
+                            extra_data
+                        )
+                        failure_text = (
+                            _(
+                                "Source subtitle embedding failed: {error_detail}. "
+                                "Translation can still continue."
+                            )
+                            if continues
+                            else _("Source subtitle embedding failed: {error_detail}.")
+                        )
+                        await client.chat_postMessage(
+                            channel=extra_data.get("slack_channel_id")
+                            or auth.slack_user.channel_id
+                            or auth.slack_user.user_id,
+                            text=format_error_detail(failure_text, error_msg),
+                            thread_ts=thread_ts,
+                        )
+                        if continues:
+                            await continue_configure_after_failed_source_embed(
+                                client,
+                                extra_data,
+                                extra_data.get("slack_channel_id")
+                                or auth.slack_user.channel_id
+                                or auth.slack_user.user_id,
+                                thread_ts,
+                            )
+                            return
                     await fail_media_submissions(extra_data)
+                    await mark_media_quote_cancelled(extra_data)
                     return
 
                 # Get channel and thread info
@@ -644,7 +682,16 @@ async def ray_events(
                         failed_languages=transcribed_event.failed_languages,
                     )
                     if not delivered:
-                        await fail_media_submissions(extra_data)
+                        if configure_source_embed_continues_translation(extra_data):
+                            await continue_configure_after_failed_source_embed(
+                                client,
+                                extra_data,
+                                str(channel_id),
+                                thread_ts,
+                            )
+                        else:
+                            await fail_media_submissions(extra_data)
+                            await mark_media_quote_cancelled(extra_data)
                         return
                     # Spend credits for embedding
                     embedding_tokens = await spend_embedding_credits(task_info, auth)
@@ -653,8 +700,9 @@ async def ray_events(
                         await update_tokens_consumed(
                             transcribed_event.task_uuid, embedding_tokens
                         )
-                    await update_submission_status(extra_data)
-                    await mark_media_quote_done(extra_data)
+                    if not extra_data.get("workflow_type"):
+                        await update_submission_status(extra_data)
+                        await mark_media_quote_done(extra_data)
 
             except ValidationError as e:
                 raise HTTPException(

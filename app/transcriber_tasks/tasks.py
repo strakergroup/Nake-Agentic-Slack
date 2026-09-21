@@ -114,6 +114,7 @@ async def create_asr_task(asr_task: ASRTask):
                 model=asr_task.model,
                 service=asr_task.service,
                 app_source=asr_task.app_source,
+                duration_ms=extra_data.get("duration_ms") or None,
             )
             session.add(new_task)
             await session.commit()

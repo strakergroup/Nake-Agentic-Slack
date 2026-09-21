@@ -1,3 +1,5 @@
+import json
+
 from app.slack.templates.views import (
     calculate_total_cost,
     cancel_job_modal,
@@ -661,6 +663,251 @@ class TestVideoTranscribeTranslateModal:
                 break
 
         assert target_lang_block is not None, "Target languages block not found"
+
+
+class TestVideoConfigureMediaModal:
+    """RAY-81819: unified Configure modal for media workflow flags."""
+
+    def test_modal_structure_and_callback(self):
+        import json
+
+        from app.slack.templates.views import video_configure_media_modal
+
+        files = [
+            {
+                "file_id": "F123456",
+                "file_name": "test_video.mp4",
+                "duration_ms": 60000,
+            }
+        ]
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=files,
+            thread_ts="123.456",
+        )
+        assert modal["type"] == "modal"
+        assert modal["callback_id"] == "video_configure_media_submit"
+        metadata = json.loads(modal["private_metadata"])
+        assert metadata["channel_id"] == "C123456"
+        assert metadata["files"] == files
+        assert metadata["thread_ts"] == "123.456"
+        assert metadata["show_embed_option"] is True
+
+    def test_service_selection_copy_and_file_first_order(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C1",
+            files=self._files(),
+        )
+        assert modal["title"]["text"] == "Service selection"
+        dumped = json.dumps(modal)
+        assert (
+            "select an extra transcript output format (in addition to SRT)"
+            in dumped
+        )
+        input_ids = [
+            block.get("block_id")
+            for block in modal["blocks"]
+            if block.get("block_id")
+        ]
+        assert input_ids.index("selected_file") < input_ids.index("workflow_type")
+        assert (
+            _modal_block(modal, "selected_file")["label"]["text"]
+            == "File(s) to process"
+        )
+        assert (
+            _modal_block(modal, "word_transcript")["label"]["text"]
+            == "Native transcript copy (.docx format)"
+        )
+
+    def test_workflow_type_dispatches_for_views_update(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+        )
+        workflow = _modal_block(modal, "workflow_type")
+        assert workflow["dispatch_action"] is True
+        element = workflow["element"]
+        assert element["action_id"] == "video_configure_workflow_type"
+        values = [opt["value"] for opt in element["options"]]
+        assert values == ["transcribe_only", "transcribe_translate"]
+        assert element["initial_option"]["value"] == "transcribe_translate"
+
+    def test_translate_mode_shows_languages_and_translated_embed(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+            show_translate_options=True,
+            show_embed_option=True,
+        )
+        block_ids = _modal_block_ids(modal)
+        assert "target_languages" in block_ids
+        assert "embedding" in block_ids
+        assert "embed_source" not in block_ids
+        assert "embed_translated" not in block_ids
+        assert "review_gate" not in block_ids
+        embedding = _modal_block(modal, "embedding")
+        assert embedding["label"]["text"] == "Embedding"
+        assert [opt["value"] for opt in embedding["element"]["options"]] == [
+            "embed_source",
+            "embed_translated",
+        ]
+
+    def test_transcribe_only_hides_languages_and_translated_embed(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+            show_translate_options=False,
+            show_embed_option=True,
+        )
+        block_ids = _modal_block_ids(modal)
+        assert "target_languages" not in block_ids
+        assert "embed_translated" not in block_ids
+        assert "embed_source" not in block_ids
+        assert "review_gate" not in block_ids
+        embedding = _modal_block(modal, "embedding")
+        assert embedding["label"]["text"] == "Embedding"
+        assert [opt["value"] for opt in embedding["element"]["options"]] == [
+            "embed_source"
+        ]
+        assert (
+            _modal_block(modal, "workflow_type")["element"]["initial_option"]["value"]
+            == "transcribe_only"
+        )
+
+    def test_audio_only_hides_embed_checkboxes(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+            show_translate_options=True,
+            show_embed_option=False,
+        )
+        block_ids = _modal_block_ids(modal)
+        assert "embed_source" not in block_ids
+        assert "embed_translated" not in block_ids
+        assert "embedding" not in block_ids
+        assert "review_gate" not in block_ids
+        assert "target_languages" in block_ids
+
+    def test_embedding_defaults_unchecked_and_has_no_review_checkbox(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+        )
+        embedding = _modal_block(modal, "embedding")
+        assert not embedding["element"].get("initial_options")
+        assert embedding["element"]["options"][0]["text"]["text"] == "Source subtitles"
+        assert (
+            embedding["element"]["options"][1]["text"]["text"] == "Translated subtitles"
+        )
+        assert "review_gate" not in _modal_block_ids(modal)
+
+    def test_configure_modal_word_is_optional_select_defaulting_to_none(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(channel_id="C1", files=self._files())
+        ids = _modal_block_ids(modal)
+        assert "word_transcript" in ids
+        assert "word_format" not in ids
+        word = _modal_block(modal, "word_transcript")
+        assert word["optional"] is True
+        assert word.get("dispatch_action") is not True
+        element = word["element"]
+        assert element["type"] == "static_select"
+        assert element["action_id"] == "word_transcript_format"
+        assert [opt["value"] for opt in element["options"]] == [
+            "none",
+            "text",
+            "speakers",
+            "timestamps",
+            "speakers_and_timestamps",
+        ]
+        assert [opt["text"]["text"] for opt in element["options"]] == [
+            "None",
+            "Text",
+            "Speakers",
+            "Timestamps",
+            "Speakers and timestamps",
+        ]
+        assert element["initial_option"]["value"] == "none"
+
+    def test_configure_modal_word_select_preserves_selected_format(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C1",
+            files=self._files(),
+            word_transcript_format="speakers",
+        )
+        word = _modal_block(modal, "word_transcript")
+        assert word["element"]["initial_option"]["value"] == "speakers"
+        assert "word_format" not in _modal_block_ids(modal)
+
+    def _files(self) -> list[dict]:
+        return [
+            {
+                "file_id": "F123456",
+                "file_name": "test_video.mp4",
+                "duration_ms": 60000,
+            }
+        ]
+
+
+class TestMediaSrtReplaceModal:
+    """RAY-81819: Replace SRT uses a modal file_input, not a thread button."""
+
+    def test_replace_modal_accepts_one_srt(self):
+        from app.slack.templates.views import media_srt_replace_modal
+
+        modal = media_srt_replace_modal("q-1")
+        assert modal["type"] == "modal"
+        assert modal["callback_id"] == "media_srt_replace_submit"
+        assert modal["private_metadata"] == "q-1"
+        file_block = _modal_block(modal, "srt_file")
+        element = file_block["element"]
+        assert element["type"] == "file_input"
+        assert "filetypes" not in element
+        assert element["max_files"] == 1
+        assert modal["title"]["text"] == "Edit and reupload"
+        assert file_block["label"]["text"] == "Replacement file"
+        dumped = json.dumps(modal)
+        assert "Upload an edited subtitle file." in dumped
+        assert "SRT" not in dumped
+
+    def test_replace_modal_private_metadata_includes_language(self):
+        from app.slack.templates.views import media_srt_replace_modal
+
+        modal = media_srt_replace_modal("q-1", language="fi")
+        assert json.loads(modal["private_metadata"]) == {
+            "quote_id": "q-1",
+            "language": "fi",
+        }
+
+
+def _modal_block_ids(modal: dict) -> list[str]:
+    return [
+        block.get("block_id")
+        for block in modal.get("blocks", [])
+        if block.get("block_id")
+    ]
+
+
+def _modal_block(modal: dict, block_id: str) -> dict:
+    for block in modal.get("blocks", []):
+        if block.get("block_id") == block_id:
+            return block
+    raise AssertionError(f"block {block_id} not found")
 
 
 class TestInsightsRemovedFromHomeView:

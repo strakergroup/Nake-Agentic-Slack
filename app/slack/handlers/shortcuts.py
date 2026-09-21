@@ -73,7 +73,7 @@ async def handle_show_srt_translate_form(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return

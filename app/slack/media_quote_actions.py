@@ -24,15 +24,21 @@ from app.auth.connector import (
 from app.config import domains
 from app.database import async_engines
 from app.ibm_ht_service_account import resolve_slack_poster_email
+from app.media.media_workflow import (
+    MediaWorkflowEvent,
+    MediaWorkflowTransitionError,
+    advance_media_workflow,
+    media_workflow_session_from_quote,
+)
 from app.models import ASRTask, TranscriptionTask, TranscriptionTaskData
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
-from app.slack.document_mt_quote_adjustment import document_mt_tokens_for_pairs
+from app.slack.media_configure_embed import resume_configure_embed_phase
 from app.slack.media_quote_adjustment import (
+    media_quote2_required_tokens,
     media_selected_target_language_names,
     media_selected_target_languages,
-    media_translation_quote_from_session,
     media_translation_quote_uses_adjust_layout,
 )
 from app.slack.media_quotes import (
@@ -52,8 +58,10 @@ from app.slack.media_quotes import (
     STAGE_TRANSLATING,
     delete_media_quote_session,
     get_media_quote_session,
+    media_quote_actor_may_continue,
     media_quote_blocks,
     media_quote_lock_key,
+    translate_resume_pipeline_type,
     update_media_quote_session,
 )
 from app.slack.middleware import require_ray_client
@@ -226,10 +234,7 @@ async def _resume_translate_phase(
     session: dict[str, Any],
 ) -> None:
     """Update DB pipeline_type for phase-2 and re-trigger the consumer."""
-    if pipeline_kind == PIPELINE_TRANSCRIBE_TRANSLATE_EMBED:
-        next_pipeline = "translate_embed"
-    else:
-        next_pipeline = "translate_only"
+    next_pipeline = translate_resume_pipeline_type(session)
 
     async with AsyncSession(async_engines["sitecommons"]) as db_session:
         task = await db_session.get(TranscriptionTask, task_uuid)
@@ -238,6 +243,10 @@ async def _resume_translate_phase(
         extra_data = dict(task.extra_data or {})
         extra_data["media_quote_id"] = session["quote_id"]
         extra_data["pipeline_kind"] = pipeline_kind
+        if session.get("workflow_type"):
+            extra_data["workflow_type"] = session["workflow_type"]
+            extra_data["embed_translated"] = bool(session.get("embed_translated"))
+            extra_data["embed_source"] = bool(session.get("embed_source"))
         selected_languages = media_selected_target_languages(session)
         extra_data["target_languages"] = selected_languages
         extra_data["target_language_names"] = media_selected_target_language_names(
@@ -245,16 +254,19 @@ async def _resume_translate_phase(
         )
         if session.get("submission_ids"):
             extra_data["submission_ids"] = session["submission_ids"]
+        task_values: dict[str, Any] = {
+            "pipeline_type": next_pipeline,
+            "status": "pending",
+            "stage": None,
+            "error_message": None,
+            "extra_data": extra_data,
+        }
+        if session.get("approved_source_srt_file_id"):
+            task_values["result_file_id"] = session["approved_source_srt_file_id"]
         await db_session.execute(
             update(TranscriptionTask)
             .where(TranscriptionTask.task_uuid == task_uuid)
-            .values(
-                pipeline_type=next_pipeline,
-                status="pending",
-                stage=None,
-                error_message=None,
-                extra_data=extra_data,
-            )
+            .values(**task_values)
         )
         await db_session.commit()
 
@@ -266,6 +278,22 @@ async def _resume_translate_phase(
                 "source": "Straker Translate for Slack",
             },
         )
+
+
+def _configure_quote_decision(session: dict[str, Any], event: MediaWorkflowEvent):
+    workflow = media_workflow_session_from_quote(session)
+    if workflow is None:
+        return None
+    return advance_media_workflow(workflow, event)
+
+
+def media_transcribe_wait_text(pipeline_kind: str) -> str:
+    if pipeline_kind == PIPELINE_TRANSCRIBE:
+        return _(":stopwatch: Please wait a moment while we transcribe your file(s).")
+    return _(
+        ":stopwatch: Please wait a moment while we transcribe your file(s). "
+        "You will receive an AI Translation quote when transcription completes."
+    )
 
 
 async def accept_media_quote(
@@ -291,7 +319,7 @@ async def accept_media_quote(
             text=_("This media quote has expired. Please request a new quote."),
         )
         return False
-    if session.get("user_id") != context["user_id"]:
+    if not await media_quote_actor_may_continue(session, context):
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to accept this media quote."),
@@ -323,6 +351,18 @@ async def accept_media_quote(
         if not await require_ray_client(context, allow_org_billing=True):
             return False
 
+        try:
+            configure_decision = _configure_quote_decision(
+                session, MediaWorkflowEvent.QUOTE1_ACCEPTED
+            )
+        except MediaWorkflowTransitionError as exc:
+            notify_exception(exc)
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_("This media quote is not ready to accept."),
+            )
+            return False
+
         pipeline_kind = session["pipeline_kind"]
         extra_data: dict[str, Any] = {
             "slack_user_id": context["user_id"],
@@ -333,6 +373,15 @@ async def accept_media_quote(
             "media_quote_id": quote_id,
             "pipeline_kind": pipeline_kind,
         }
+        if session.get("workflow_type"):
+            extra_data["workflow_type"] = session["workflow_type"]
+            extra_data["embed_source"] = bool(session.get("embed_source"))
+            extra_data["embed_translated"] = bool(session.get("embed_translated"))
+            extra_data["review_gate"] = bool(
+                session.get("embed_source") or session.get("embed_translated")
+            )
+        if session.get("word_transcript_format"):
+            extra_data["word_transcript_format"] = session["word_transcript_format"]
         # Stamp poster identity at accept so media spend usage rows always carry
         # Client Email/Name even when org-billed (RAY-81247) — same helpers as HT/channel.
         poster_email = await resolve_slack_poster_email(client, context["user_id"])
@@ -367,9 +416,7 @@ async def accept_media_quote(
                 extra_data["submission_id"] = session["submission_id"]
             # First phase is always ASR-only; intended pipeline stored in quote session.
             db_pipeline = PIPELINE_TRANSCRIBE
-            wait_text = _(
-                ":stopwatch: Please wait a moment while we transcribe your file."
-            )
+            wait_text = media_transcribe_wait_text(pipeline_kind)
         elif pipeline_kind == PIPELINE_TRANSCRIBE_TRANSLATE:
             extra_data["target_languages"] = session.get("target_languages") or []
             extra_data["target_language_names"] = (
@@ -378,10 +425,7 @@ async def accept_media_quote(
             if session.get("submission_ids"):
                 extra_data["submission_ids"] = session["submission_ids"]
             db_pipeline = PIPELINE_TRANSCRIBE
-            wait_text = _(
-                ":stopwatch: Please wait a moment while we transcribe your file. "
-                "You will receive an AI Translation quote when transcription completes."
-            )
+            wait_text = media_transcribe_wait_text(pipeline_kind)
         elif pipeline_kind == PIPELINE_TRANSCRIBE_TRANSLATE_EMBED:
             extra_data["target_languages"] = session.get("target_languages") or []
             extra_data["target_language_names"] = (
@@ -393,10 +437,7 @@ async def accept_media_quote(
             extra_data["original_video_download_url"] = session["download_url"]
             extra_data["original_video_file_name"] = session["file_name"]
             db_pipeline = PIPELINE_TRANSCRIBE
-            wait_text = _(
-                ":stopwatch: Please wait a moment while we transcribe your file. "
-                "You will receive an AI Translation quote when transcription completes."
-            )
+            wait_text = media_transcribe_wait_text(pipeline_kind)
         elif pipeline_kind == PIPELINE_EMBED:
             for key in (
                 "original_video_file_id",
@@ -433,13 +474,25 @@ async def accept_media_quote(
             extra_data=extra_data,
         )
 
-        next_stage = (
-            STAGE_EMBEDDING if pipeline_kind == PIPELINE_EMBED else STAGE_TRANSCRIBING
-        )
-        updated = await update_media_quote_session(
-            quote_id,
-            {"stage": next_stage, "task_uuid": task_uuid},
-        )
+        if configure_decision is not None:
+            from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+            updated = await execute_media_workflow_decision(
+                client=client,
+                session=session,
+                decision=configure_decision,
+                task_uuid=task_uuid,
+            )
+        else:
+            next_stage = (
+                STAGE_EMBEDDING
+                if pipeline_kind == PIPELINE_EMBED
+                else STAGE_TRANSCRIBING
+            )
+            updated = await update_media_quote_session(
+                quote_id,
+                {"stage": next_stage, "task_uuid": task_uuid},
+            )
         await _update_quote_message(
             client,
             channel_id=channel_id or session.get("channel_id"),
@@ -493,7 +546,7 @@ async def accept_media_translation_quote(
             text=_("This translation quote has expired. Please request a new quote."),
         )
         return False
-    if session.get("user_id") != context["user_id"]:
+    if not await media_quote_actor_may_continue(session, context):
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to accept this translation quote."),
@@ -528,22 +581,42 @@ async def accept_media_translation_quote(
     try:
         required_tokens = int(session.get("total_tokens") or 0)
         if "selected_pairs" in session:
-            required_tokens = document_mt_tokens_for_pairs(
-                media_translation_quote_from_session(session),
-                [str(pair) for pair in session.get("selected_pairs") or []],
-            )
+            pairs = [str(pair) for pair in session.get("selected_pairs") or []]
+            required_tokens = media_quote2_required_tokens(session, pairs)
         if not await _require_ai_token_balance(context, client, required_tokens):
             return False
 
+        try:
+            configure_decision = _configure_quote_decision(
+                session, MediaWorkflowEvent.QUOTE2_ACCEPTED
+            )
+        except MediaWorkflowTransitionError as exc:
+            notify_exception(exc)
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_("This translation quote is not ready to accept."),
+            )
+            return False
+
         pipeline_kind = session["pipeline_kind"]
-        await _resume_translate_phase(
-            task_uuid=task_uuid,
-            pipeline_kind=pipeline_kind,
-            session=session,
-        )
-        updated = await update_media_quote_session(
-            quote_id, {"stage": STAGE_TRANSLATING}
-        )
+        if configure_decision is not None:
+            from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+            updated = await execute_media_workflow_decision(
+                client=client,
+                session=session,
+                decision=configure_decision,
+                task_uuid=task_uuid,
+            )
+        else:
+            await _resume_translate_phase(
+                task_uuid=task_uuid,
+                pipeline_kind=pipeline_kind,
+                session=session,
+            )
+            updated = await update_media_quote_session(
+                quote_id, {"stage": STAGE_TRANSLATING}
+            )
         await _update_quote_message(
             client,
             channel_id=channel_id or session.get("channel_id"),
@@ -588,7 +661,9 @@ async def cancel_media_quote(
     """Cancel a media Quote1 or Quote2 session."""
     quote_id = action["value"]
     session = await get_media_quote_session(quote_id)
-    if session is not None and session.get("user_id") != context["user_id"]:
+    if session is not None and not await media_quote_actor_may_continue(
+        session, context
+    ):
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to cancel this media quote."),
@@ -596,11 +671,32 @@ async def cancel_media_quote(
         return
 
     if session is not None:
-        await update_media_quote_session(quote_id, {"stage": STAGE_CANCELLED})
+        try:
+            configure_decision = _configure_quote_decision(
+                session,
+                MediaWorkflowEvent.QUOTE2_CANCELLED
+                if is_translation_quote
+                else MediaWorkflowEvent.QUOTE1_CANCELLED,
+            )
+            cancel_stage = (
+                configure_decision.session.stage.value
+                if configure_decision is not None
+                else STAGE_CANCELLED
+            )
+        except MediaWorkflowTransitionError as exc:
+            notify_exception(exc)
+            cancel_stage = STAGE_CANCELLED
+        await update_media_quote_session(quote_id, {"stage": cancel_stage})
         # Unlock 24h dedupe so the user can resubmit after cancel.
         from app.ray.events.media_pipeline_events import fail_media_submissions
+        from app.slack.media_workflow_actions import (
+            _post_deferred_word_transcript_if_needed,
+        )
 
         await fail_media_submissions(session)
+        await _post_deferred_word_transcript_if_needed(
+            client, session, initial_comment=_("Native transcript copy")
+        )
     await delete_media_quote_session(quote_id)
 
     channel_id = body.get("channel", {}).get("id")
@@ -786,5 +882,6 @@ __all__ = [
     "cancel_media_quote",
     "post_media_quote_message",
     "post_or_auto_start_media_quote",
+    "resume_configure_embed_phase",
     "update_media_translation_quote_slack_message",
 ]

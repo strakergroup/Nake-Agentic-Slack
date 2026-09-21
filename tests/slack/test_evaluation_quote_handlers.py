@@ -872,3 +872,65 @@ async def test_ai_quote_adjust_submit_media_translation_accepts_media_quote():
     )
     mock_accept_document_mt.assert_not_awaited()
     mock_accept_evaluate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ai_quote_adjust_submit_media_translation_forwards_embed_toggles():
+    ack = AsyncMock()
+    client = AsyncMock()
+    context = {"channel_id": "C1"}
+    view = {
+        "state": {
+            "values": {
+                "ai_quote_language_Fmedia_es": {
+                    "evaluation_ai_quote_language_selection": {
+                        "selected_options": [{"value": "Fmedia:es"}],
+                    }
+                },
+                "ai_quote_embed": {
+                    "evaluation_ai_quote_embed_selection": {
+                        "selected_options": [
+                            {"value": "embed_source"},
+                            {"value": "Fmedia:es"},
+                        ],
+                    }
+                },
+            }
+        },
+        "private_metadata": (
+            '{"quote_id":"quote-1","quote_kind":"media_translation",'
+            '"channel_id":"C1","message_ts":"111.222"}'
+        ),
+    }
+
+    body = {"view": view, "user": {"id": "U1"}}
+    with (
+        patch(
+            "app.slack.handlers.evaluate.persist_ai_quote_adjustment",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_persist,
+        patch(
+            "app.slack.handlers.evaluate.accept_media_translation_quote",
+            new_callable=AsyncMock,
+        ),
+    ):
+        await AiQuoteAdjustSubmit(
+            ack=ack,
+            body=body,
+            client=client,
+            context=context,
+        )
+
+    mock_persist.assert_awaited_once_with(
+        client,
+        quote_id="quote-1",
+        quote_kind="media_translation",
+        selected_pairs=["Fmedia:es"],
+        user_id="U1",
+        context=context,
+        channel_id="C1",
+        message_ts="111.222",
+        embed_source=True,
+        embed_pairs=["Fmedia:es"],
+    )

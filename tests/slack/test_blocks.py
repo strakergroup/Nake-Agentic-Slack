@@ -313,13 +313,93 @@ class TestMediaTranslationQuoteBlocks:
             "media_translation_quote_accept",
         ]
         rendered = str(blocks)
-        assert "Running the AI translation will incur the following cost:" in rendered
+        assert "Running the AI translation will incur the following cost:" not in rendered
         assert "Adjust Request" in rendered
         assert "product-demo.mp4" in rendered
         assert "Spanish" in rendered
         assert "French" in rendered
         assert "human review" not in rendered
         assert "media_translation_quote_cancel" not in rendered
+        assert "Translated subtitle embedding" not in rendered
+        assert "*Total cost:* USD 12.00" in rendered
+
+    def test_media_translation_quote_blocks_include_translated_embed_when_selected(
+        self,
+    ):
+        session = self._session()
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+        rendered = str(blocks)
+
+        assert "Translated subtitle embedding (2 languages):" in rendered
+        assert "Source subtitle embedding" not in rendered
+        assert "USD 1.20" in rendered
+        assert "*Total cost:* USD 13.20" in rendered
+
+    def test_media_translation_quote_blocks_embed_row_single_colon_no_echo(self):
+        session = self._session()
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+        rendered = str(blocks)
+
+        assert rendered.count("Translated subtitle embedding (2 languages)") == 1
+        assert "::" not in rendered
+
+    def test_media_translation_quote_blocks_embed_rows_have_no_cost_prefix(self):
+        session = self._session()
+        session["embed_source"] = True
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+        rendered = str(blocks)
+
+        assert "*Source subtitle embedding:*" in rendered
+        assert "Cost:" not in rendered
+
+    def test_media_translation_quote_blocks_guidance_mentions_services(self):
+        session = self._session()
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+
+        blocks = media_translation_quote_blocks(session)
+        rendered = str(blocks)
+
+        assert (
+            "or *Adjust Request* to remove selected languages, files, or services."
+            in rendered
+        )
+
+    def test_media_translation_quote_blocks_source_embed_before_translated(self):
+        session = self._session()
+        session["embed_source"] = True
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+        rendered = str(blocks)
+
+        assert "Source subtitle embedding" in rendered
+        assert rendered.index("Source subtitle embedding") < rendered.index(
+            "Translated subtitle embedding"
+        )
+        assert "*Total cost:* USD 13.80" in rendered
+
+    def test_media_translation_quote_blocks_embed_follows_selected_languages(self):
+        session = self._session()
+        session["embed_translated"] = True
+        session["duration_ms"] = 60_000
+        session["selected_pairs"] = ["Fmedia:es"]
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+        rendered = str(blocks)
+
+        assert "Translated subtitle embedding (1 language):" in rendered
+        assert "*Total cost:* USD 6.60" in rendered
 
     def test_media_translation_quote_blocks_empty_selected_pairs_all_cancelled(self):
         session = self._session()
