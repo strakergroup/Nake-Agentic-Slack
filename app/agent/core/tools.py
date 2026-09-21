@@ -1,10 +1,19 @@
 """The agent's menu of actions.
 
-Nine tools. Eight are look-ups that run straight away. One is gated: the model
-can only propose it, and the runner runs it after a verified click. The agent
-never submits paid work: quoted work goes through the app's existing quote
-message and Accept button, and people who cannot see quotes are handed the
-existing document form.
+Eleven tools. Nine are look-ups that run straight away. Two are gated: the model
+can only propose them, and the runner runs them after a verified click.
+
+Money: quoted work goes through the app's existing quote message and Accept
+button, which the agent never touches. People who cannot see quotes confirm a
+document translation with one click and no price (`submit_document_translation`),
+which calls the same function the document form's Submit calls today. With
+native documents switched off (the adapter's default) neither document tool is
+offered and everyone is handed the existing form.
+
+Posting: an explicit request made in a channel thread is its own record, so
+`post_translation_in_thread` runs without a click, like the translate shortcut
+today. Anywhere else, or when Arbitr spoke first, `post_translation_publicly`
+needs a click.
 """
 
 from __future__ import annotations
@@ -104,8 +113,39 @@ _SPECS: list[ToolSpec] = [
         "lookup",
     ),
     ToolSpec(
+        "submit_document_translation",
+        "Propose translating the attached files for a person who cannot see quotes. This is a proposal only: "
+        "the person confirms with one click, and no price is shown. Never say it has started until you are "
+        "told the approval was given. Give target_language_names in the person's own language for the button text.",
+        _schema(
+            {
+                "target_languages": {"type": "array", "items": {"type": "string"}},
+                "target_language_names": {"type": "array", "items": {"type": "string"}},
+                "source_language": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            },
+            ["target_languages", "target_language_names", "source_language"],
+        ),
+        "gated",
+    ),
+    ToolSpec(
+        "post_translation_in_thread",
+        "Post a translation into the channel thread you were mentioned in, visible to everyone. Use only when "
+        "the person explicitly asked, in that thread, for a translation to be posted. Their request is the "
+        "record, so no click is needed. message_ts is the message to translate; null means the first message "
+        "of the thread.",
+        _schema(
+            {
+                "target_language": {"type": "string"},
+                "message_ts": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            },
+            ["target_language", "message_ts"],
+        ),
+        "lookup",
+    ),
+    ToolSpec(
         "post_translation_publicly",
-        "Propose posting a translation of a channel message into its thread, visible to everyone. This is a "
+        "Propose posting a translation into a channel thread when the request did NOT come from that thread "
+        "(for example from a direct message). This is a "
         "proposal only: a person must approve it with a click before anything is posted. Never say it has been "
         "posted until you are told the approval was given.",
         _schema(
@@ -168,14 +208,20 @@ class ToolRegistry:
     def specs(self) -> list[ToolSpec]:
         return list(self._specs.values())
 
-    def specs_for(self, can_see_quotes: bool) -> list[ToolSpec]:
-        """Tools offered to the model. A person who cannot see quotes is never offered the quote tool."""
-        offer_quotes = can_see_quotes and self._native_quotes
-        return [
-            s
-            for s in self._specs.values()
-            if offer_quotes or s.name != "request_document_quote"
-        ]
+    def specs_for(self, can_see_quotes: bool, surface: str = "dm") -> list[ToolSpec]:
+        """Tools offered to the model for this person, here.
+
+        Quote tool: only people who can see quotes. Confirm-and-submit tool: only people
+        who cannot. Neither when native documents are off. In-thread posting: only when
+        the agent was mentioned in a channel thread."""
+        hidden = set()
+        if not (self._native_quotes and can_see_quotes):
+            hidden.add("request_document_quote")
+        if not (self._native_quotes and not can_see_quotes):
+            hidden.add("submit_document_translation")
+        if surface != "mention":
+            hidden.add("post_translation_in_thread")
+        return [s for s in self._specs.values() if s.name not in hidden]
 
     def as_anthropic_tools(
         self, specs: list[ToolSpec] | None = None

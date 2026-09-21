@@ -50,9 +50,14 @@ _CARDS: dict[str, str] = {
     "translate_text": copy.CARD_TRANSLATE_TEXT,
     "request_document_quote": copy.CARD_PRICE,
     "offer_form": copy.CARD_FORM,
+    "post_translation_in_thread": copy.CARD_POST,
 }
 # The AI disclaimer goes on replies that accompany AI output, not on every message.
-_DELIVERS_AI_OUTPUT = {"translate_text", "post_translation_publicly"}
+_DELIVERS_AI_OUTPUT = {
+    "translate_text",
+    "post_translation_publicly",
+    "post_translation_in_thread",
+}
 
 
 class SlackPort(Protocol):
@@ -170,7 +175,7 @@ class AgentRunner:
                 return
 
             if not approved:
-                self._drop_card(session, copy.CARD_POST)
+                self._drop_card(session, _gated_card(approval.tool))
                 self._note(
                     session, f"The person declined: {approval.summary}", copy.DECLINED
                 )
@@ -184,7 +189,8 @@ class AgentRunner:
             await self._slack.set_status(session.facts, "processing")
             session.status = "processing"
             session.plan = []  # execution is a second message with its own plan
-            self._card(session, copy.CARD_POST, "in_progress", "")
+            card = _gated_card(approval.tool)
+            self._card(session, card, "in_progress", "")
             turn.tools.append(approval.tool)
             try:
                 outcome = await self._tools.handler_for(approval.tool)(
@@ -194,13 +200,11 @@ class AgentRunner:
                 logger.exception("approved tool failed", extra={"tool": approval.tool})
                 outcome = ToolOutcome(content="failed", is_error=True)
             if outcome.is_error:
-                self._card(session, copy.CARD_POST, "error", "")
+                self._card(session, card, "error", "")
                 turn.outcome, turn.error_type = "failure", "tool_error"
                 await self._finish_plain(session, copy.FALLBACK_TOOL_FAILED, None)
             else:
-                self._card(
-                    session, copy.CARD_POST, "complete", outcome.card_detail or ""
-                )
+                self._card(session, card, "complete", outcome.card_detail or "")
                 session.messages.append(
                     {
                         "role": "user",
@@ -260,7 +264,7 @@ class AgentRunner:
     async def _reason(self, session: Session, turn: _Turn) -> None:
         facts = session.facts
         system = build_system_prompt(facts)
-        specs = self._tools.specs_for(facts.can_see_quotes)
+        specs = self._tools.specs_for(facts.can_see_quotes, facts.surface)
 
         for _ in range(self._max_steps):
             if await self._store.stop_requested(session.key):
@@ -332,21 +336,32 @@ class AgentRunner:
                 "Not available for this person. Use offer_form with document_translation.",
                 is_error=True,
             )
+        if call.name == "submit_document_translation" and facts.can_see_quotes:
+            return _result(
+                call,
+                "This person sees quotes. Use request_document_quote.",
+                is_error=True,
+            )
+        if call.name == "post_translation_in_thread" and facts.surface != "mention":
+            return _result(
+                call,
+                "Only available when mentioned in a channel thread. Use post_translation_publicly.",
+                is_error=True,
+            )
 
         if self._tools.is_gated(call.name):
+            summary, label, card = _gated_presentation(call)
             approval = self._gate.create(
                 session,
                 call.name,
                 call.input,
                 requested_by=facts.user_id,
-                summary=copy.POST_PUBLICLY_PROMPT,
+                summary=summary,
                 tool_use_id=call.id,
             )
-            self._card(session, copy.CARD_POST, "pending", "")
+            self._card(session, card, "pending", "")
             await self._show_plan(session, turn)
-            turn.extra_blocks.extend(
-                slack_ui.approval_blocks(approval, copy.POST_PUBLICLY_APPROVE)
-            )
+            turn.extra_blocks.extend(slack_ui.approval_blocks(approval, label))
             return _result(call, copy.WAITING_FOR_APPROVAL)
 
         turn.tools.append(call.name)
@@ -466,6 +481,29 @@ class AgentRunner:
                 voice_violations=turn.violations,
             )
         )
+
+
+def _gated_card(tool: str) -> str:
+    return (
+        copy.CARD_DELIVER if tool == "submit_document_translation" else copy.CARD_POST
+    )
+
+
+def _gated_presentation(call: ToolCall) -> tuple[str, str, str]:
+    """Summary text, approve-button label and task card for a gated proposal. No price, ever."""
+    if call.name == "submit_document_translation":
+        names = (
+            call.input.get("target_language_names")
+            or call.input.get("target_languages")
+            or []
+        )
+        languages = ", ".join(str(n) for n in names)
+        return (
+            copy.SUBMIT_DOCUMENT_PROMPT.format(languages=languages),
+            copy.SUBMIT_DOCUMENT_APPROVE,
+            copy.CARD_DELIVER,
+        )
+    return copy.POST_PUBLICLY_PROMPT, copy.POST_PUBLICLY_APPROVE, copy.CARD_POST
 
 
 def _say(session: Session, text: str) -> None:

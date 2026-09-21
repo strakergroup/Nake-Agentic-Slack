@@ -10,7 +10,6 @@ ADAPTERS = ROOT / "app" / "agent" / "adapters"
 
 # Functions that submit, accept or cancel paid work. The agent must never call them.
 BANNED = (
-    "enqueue_document_mt_submission",
     "document_machine_translate",
     "handle_document_mt_submit",
     "accept_document_mt_quote",
@@ -53,15 +52,6 @@ def test_every_tool_the_adapter_binds_exists_in_the_registry():
     bound = set(re.findall(r'registry\.bind\("([a-z_]+)"', source))
     known = {spec.name for spec in ToolRegistry().specs()}
     assert bound == known
-
-
-def test_the_quote_tool_is_bound_only_behind_its_flag():
-    source = (ADAPTERS / "straker_tools.py").read_text()
-    guarded = re.search(
-        r'if native_document_quotes:\n\s+registry\.bind\("request_document_quote"',
-        source,
-    )
-    assert guarded is not None
 
 
 def test_no_adapter_opens_a_modal():
@@ -109,3 +99,34 @@ def test_the_slash_command_pattern_accepts_arbitr_and_still_accepts_straker():
     for command in ("/arbitr", "/straker", "/ray", "/lc"):
         assert re.fullmatch(pattern, command), command
     assert not re.fullmatch(pattern, "/giphy")
+
+
+def test_the_submission_function_is_referenced_only_inside_the_gated_tool():
+    """`enqueue_document_mt_submission` spends money. It may appear in one adapter file,
+    inside one function, and that function's tool must be gated in the registry."""
+    from app.agent.core.tools import ToolRegistry
+
+    name = "enqueue_document_mt_submission"
+    holders = [py.name for py in ADAPTERS.glob("*.py") if name in _names(py)]
+    assert holders == ["straker_tools.py"]
+    tree = ast.parse((ADAPTERS / "straker_tools.py").read_text())
+    functions = [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef)
+        and any(
+            (isinstance(n, ast.Name) and n.id == name)
+            or (isinstance(n, ast.alias) and n.name == name)
+            for n in ast.walk(node)
+        )
+    ]
+    assert functions == ["submit_document_translation"]
+    assert ToolRegistry().is_gated("submit_document_translation")
+
+
+def test_both_document_tools_are_bound_only_behind_the_flag():
+    source = (ADAPTERS / "straker_tools.py").read_text()
+    before, after = source.split("if native_document_quotes:", 1)
+    assert 'registry.bind("request_document_quote"' in after
+    assert 'registry.bind("submit_document_translation"' in after
+    assert 'registry.bind("submit_document_translation"' not in before

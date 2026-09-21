@@ -14,27 +14,33 @@ EXPECTED = {
     "offer_form",
     "set_digest",
     "explain",
+    "submit_document_translation",
+    "post_translation_in_thread",
 }
 
 
-def test_exactly_the_nine_tools():
+def test_exactly_the_eleven_tools():
     assert {s.name for s in ToolRegistry().specs()} == EXPECTED
 
 
-def test_only_public_posting_is_gated():
+def test_only_spending_and_unrequested_public_posting_are_gated():
     registry = ToolRegistry()
-    assert [s.name for s in registry.specs() if s.kind == "gated"] == [
-        "post_translation_publicly"
-    ]
-    assert registry.is_gated("post_translation_publicly")
+    gated = sorted(s.name for s in registry.specs() if s.kind == "gated")
+    assert gated == ["post_translation_publicly", "submit_document_translation"]
+    assert not registry.is_gated(
+        "post_translation_in_thread"
+    )  # an explicit in-thread request is its own record
     assert not registry.is_gated("get_job")
     assert not registry.is_gated("made_up")
 
 
-def test_no_tool_can_submit_or_accept_paid_work():
+def test_no_tool_can_accept_pay_or_cancel_and_the_only_submit_is_gated():
+    registry = ToolRegistry()
     names = " ".join(EXPECTED)
-    for banned in ("submit", "accept", "pay", "purchase", "cancel"):
+    for banned in ("accept", "pay", "purchase", "cancel"):
         assert banned not in names
+    assert [n for n in EXPECTED if "submit" in n] == ["submit_document_translation"]
+    assert registry.is_gated("submit_document_translation")
 
 
 def test_schemas_are_strict():
@@ -60,14 +66,33 @@ def test_offer_form_is_a_closed_set_including_the_document_form():
     assert "document_translation" in FORMS
 
 
-def test_people_who_cannot_see_quotes_are_never_offered_the_quote_tool():
+def offered(registry, **kwargs):
+    return {s.name for s in registry.specs_for(**kwargs)}
+
+
+def test_document_tools_follow_who_can_see_quotes():
     registry = ToolRegistry()
-    assert "request_document_quote" not in {
-        s.name for s in registry.specs_for(can_see_quotes=False)
-    }
-    assert "request_document_quote" in {
-        s.name for s in registry.specs_for(can_see_quotes=True)
-    }
+    sees = offered(registry, can_see_quotes=True)
+    blind = offered(registry, can_see_quotes=False)
+    assert (
+        "request_document_quote" in sees and "submit_document_translation" not in sees
+    )
+    assert (
+        "submit_document_translation" in blind and "request_document_quote" not in blind
+    )
+
+
+def test_in_thread_posting_is_only_offered_when_mentioned_in_a_channel():
+    registry = ToolRegistry()
+    assert "post_translation_in_thread" in offered(
+        registry, can_see_quotes=True, surface="mention"
+    )
+    assert "post_translation_in_thread" not in offered(
+        registry, can_see_quotes=True, surface="dm"
+    )
+    assert "post_translation_in_thread" not in offered(
+        registry, can_see_quotes=True, surface="panel"
+    )
 
 
 def test_binding():

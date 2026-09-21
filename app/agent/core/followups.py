@@ -23,6 +23,9 @@ class JobView:
     name: str
     state: Literal["quote_waiting", "in_progress", "delivered"]
     since: datetime  # when it entered this state, timezone-aware
+    expires_at: datetime | None = (
+        None  # document quotes last 12 hours, job quotes 30 days
+    )
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,9 @@ def plan_followups(
         key = f"{job.job_id}:{job.state}"
         if key in already_sent:
             continue
+        expired = job.expires_at is not None and now >= job.expires_at
+        if job.state == "quote_waiting" and expired:
+            continue  # a reminder about a dead quote sends the person to an error
         if job.state == "quote_waiting" and now - job.since >= QUOTE_REMINDER_AFTER:
             day = job.since.strftime("%A")
             out.append(

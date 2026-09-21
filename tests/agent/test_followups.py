@@ -68,3 +68,21 @@ def test_digest_lines_and_optional_team_line():
     ]
     with_team = build_digest(jobs, opted_in=True, team_words_this_week=40000)
     assert with_team[-1] == "Your team translated 40,000 words this week."
+
+
+def test_never_remind_about_a_quote_that_has_expired():
+    dead = JobView(
+        "TJ1",
+        "Deck.pptx",
+        "quote_waiting",
+        NOON - timedelta(hours=49),
+        expires_at=NOON - timedelta(hours=37),
+    )
+    alive = JobView(
+        "TJ2",
+        "Notice.pdf",
+        "quote_waiting",
+        NOON - timedelta(hours=49),
+        expires_at=NOON + timedelta(days=28),
+    )
+    assert [f.job_id for f in plan_followups([dead, alive], set(), NOON)] == ["TJ2"]

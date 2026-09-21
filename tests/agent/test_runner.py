@@ -476,3 +476,90 @@ async def test_refusal_gets_fixed_copy():
     rig = Rig([say("", reason="refusal")])
     await rig.say("Do something harmful")
     assert rig.slack.calls[-1][1]["text"] == copy.FALLBACK_REFUSED
+
+
+SUBMIT = ToolCall(
+    "tu_submit",
+    "submit_document_translation",
+    {
+        "target_languages": ["ja", "de"],
+        "target_language_names": ["Japanese", "German"],
+        "source_language": "en",
+    },
+)
+
+
+@pytest.mark.asyncio
+async def test_a_person_who_cannot_see_quotes_confirms_with_one_click_and_no_price():
+    rig = Rig(
+        [call(SUBMIT), say("The button is waiting."), say("Started.")],
+        handlers={
+            "submit_document_translation": ok(
+                "submitted", card_detail=copy.CARD_DETAIL_HANDED_OVER
+            )
+        },
+        facts=make_facts(can_see_quotes=False),
+    )
+    await rig.say("Translate this deck into Japanese and German")
+    assert rig.ran == []  # nothing is billed until the click
+    stop = rig.slack.calls[-1][1]
+    summary = stop["blocks"][0]["text"]["text"]
+    assert summary == copy.SUBMIT_DOCUMENT_PROMPT.format(languages="Japanese, German")
+    assert "USD" not in str(stop["blocks"]) and "$" not in str(stop["blocks"])
+    assert (
+        stop["blocks"][1]["elements"][0]["text"]["text"] == copy.SUBMIT_DOCUMENT_APPROVE
+    )
+    approval_id = next(iter((await rig.session()).pending))
+    await rig.runner.handle_approval(rig.facts, approval_id, "U_MIKA", approved=True)
+    assert [name for name, _ in rig.ran] == ["submit_document_translation"]
+    session = await rig.session()
+    assert [(c["title"], c["state"], c["detail"]) for c in session.plan] == [
+        (copy.CARD_DELIVER, "complete", copy.CARD_DETAIL_HANDED_OVER)
+    ]
+    assert (
+        session.status == "active"
+    )  # handed to the service; the session does not sit on Working
+
+
+@pytest.mark.asyncio
+async def test_the_confirm_and_submit_tool_refuses_people_who_see_quotes():
+    rig = Rig(
+        [call(SUBMIT), say("Use the quote.")],
+        handlers={"submit_document_translation": ok("submitted")},
+    )
+    await rig.say("Translate this deck")
+    assert rig.ran == [] and (await rig.session()).pending == {}
+    assert rig.llm.requests[1]["messages"][-1]["content"][0]["is_error"] is True
+
+
+IN_THREAD = ToolCall(
+    "tu_thread",
+    "post_translation_in_thread",
+    {"target_language": "ja", "message_ts": None},
+)
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_in_thread_request_posts_without_a_click():
+    rig = Rig(
+        [call(IN_THREAD), say("Posted the Japanese version in this thread.")],
+        handlers={"post_translation_in_thread": ok("requested")},
+        facts=make_facts(surface="mention", channel_id="C1"),
+    )
+    await rig.say("@Arbitr post this in Japanese for the Tokyo team")
+    assert [name for name, _ in rig.ran] == ["post_translation_in_thread"]
+    assert (await rig.session()).pending == {}
+    assert copy.DISCLAIMER in rig.slack.calls[-1][1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_in_thread_posting_is_refused_outside_a_channel_thread():
+    rig = Rig(
+        [call(IN_THREAD), say("I need a click for that.")],
+        handlers={"post_translation_in_thread": ok("requested")},
+    )
+    await rig.say("post this in Japanese in #launch-global")
+    assert rig.ran == []
+    assert "post_translation_in_thread" not in {
+        t.name for t in rig.llm.requests[0]["tools"]
+    }

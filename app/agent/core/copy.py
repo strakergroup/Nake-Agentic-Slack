@@ -23,6 +23,7 @@ CARD_DELIVER = "Translate and deliver here"
 CARD_POST = "Post the translation"
 CARD_FORM = "Open the form"
 CARD_DETAIL_REQUESTED = "Requested"
+CARD_DETAIL_HANDED_OVER = "Handed to the translation service"
 CARD_DETAIL_QUOTE_READY = "Quote ready"
 CARD_DETAIL_DELIVERED = "Delivered"
 
@@ -31,11 +32,13 @@ APPROVE = "Approve"
 DECLINE = "Decline"
 POST_PUBLICLY_PROMPT = (
     "I can post this translation in the thread for everyone to see. "
-    "Inline translation is metered against your organization's balance, as it is today. "
-    "You asked, so it is your click."
+    "Inline translation is metered against your organization's balance, as it is today."
 )
 POST_PUBLICLY_APPROVE = "Post it"
 NOT_NOW = "Not now"
+SUBMIT_DOCUMENT_PROMPT = "This will be charged to your organization. Translate the attached file into {languages}?"
+SUBMIT_DOCUMENT_APPROVE = "Translate now"
+SUBMIT_DOCUMENT_STARTED = "Started. I'll post the translated file here when the translation service delivers it."
 WAITING_FOR_APPROVAL = (
     "Waiting for the person to approve. Do not claim the action has happened."
 )
@@ -45,47 +48,47 @@ DECLINED = "Declined. Nothing was posted and nothing was charged. Ask again when
 
 APPROVAL_ERRORS = {
     "wrong_user": (
-        "That approval belongs to someone else. I only accept a click from the person who asked. "
-        "Ask for it yourself and I'll prepare a new one."
+        "Ask for it yourself and I'll prepare one for you. That approval belongs to the person who asked. "
+        "I only accept their click."
     ),
     "expired": (
-        "That approval has expired. I don't act on old approvals in case things have changed. "
-        "Ask again and I'll prepare a new one."
+        "Ask again and I'll prepare a new one. That approval has expired. "
+        "I don't act on old approvals in case things have changed."
     ),
     "unknown": (
-        "I couldn't find that approval. It may belong to an earlier conversation. "
-        "Ask again and I'll prepare a new one."
+        "Ask again and I'll prepare a new one. I couldn't find that approval. "
+        "It may belong to an earlier conversation."
     ),
     "already_used": (
-        "That approval was already used. I run an approved action once only. "
-        "Nothing further has happened."
+        "Nothing further has happened. That approval was already used. "
+        "I run an approved action once only."
     ),
     "stopped": (
-        "That request was stopped. I don't act on approvals from a stopped request. "
-        "Ask again when you are ready."
+        "Ask again when you're ready. That request was stopped. "
+        "I don't act on approvals from a stopped request."
     ),
 }
 
 # --- failure behaviour -----------------------------------------------------
 FALLBACK_MODEL_DOWN = (
-    "I couldn't think that through just now. The language model did not respond. "
-    "The buttons below still work, or try again in a moment."
+    "The buttons below still work. I can't answer in my own words right now, and your jobs are unaffected. "
+    "Try me again in a moment."
 )
 FALLBACK_TOOL_FAILED = (
-    "I couldn't complete that step. The translation service did not respond as expected. "
-    "Nothing was charged, and you can try again in a moment."
+    "Try that again in a moment. The translation service did not respond as expected. "
+    "Nothing was charged."
 )
 FALLBACK_TOO_MANY_STEPS = (
-    "I stopped to avoid going in circles. The request needed more steps than expected. "
-    "Tell me the one thing you need first."
+    "Tell me the one thing you need first. That request needed more steps than I take in one go. "
+    "Nothing was ordered or posted."
 )
 FALLBACK_REFUSED = (
-    "I can't help with that request. It is outside what this app does. "
-    "I can translate text and documents, check your jobs, and open the forms for media and review."
+    "I can translate text and documents, check your jobs, and open the forms for media and review. "
+    "That request is outside what this app does. Ask me for one of those instead."
 )
 STOPPED = (
-    "Stopped. Anything not yet approved has been cancelled. "
-    "Work you already approved and paid for will still be delivered."
+    "Stopped. Nothing new will start, and anything waiting for your approval has been cancelled. "
+    "Jobs already handed to the translation service carry on, and each can be cancelled from its own job message."
 )
 QUICK_ACTION_JOBS = "My jobs"
 QUICK_ACTION_NEW = "New translation"
@@ -129,8 +132,8 @@ HELP_IBM_GENERIC = (
     "Your workspace is already set up. Say what you need in your own words."
 )
 HELP_NO_PRICE = (
-    "I can't show pricing here. Pricing in this workspace is visible to administrators. "
-    "An administrator can share the quote with you."
+    "An administrator can share the quote with you. Pricing in this workspace is visible to administrators only. "
+    "Everything else works as usual."
 )
 HELP_GETTING_STARTED = (
     "Type what you need, or attach a file and say which languages you want. "
@@ -183,9 +186,8 @@ SUGGESTIONS_ENABLED = (
     "Suggestions are now on in this channel. Anyone here can turn them off."
 )
 ADMIN_ONLY_SUGGESTIONS = (
-    "In this workspace only an admin can turn on channel suggestions. "
-    "This keeps administrators in control of where I speak first. "
-    "I can send the request to your admins."
+    "I can send the request to your admins. In this workspace only an admin can turn on channel suggestions. "
+    "That keeps administrators in control of where I speak first."
 )
 ASK_AN_ADMIN = "Ask an admin"
 

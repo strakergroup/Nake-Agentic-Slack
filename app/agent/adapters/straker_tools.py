@@ -5,8 +5,11 @@ written from a reading of the source and has not been run: the app cannot start
 outside Straker's network. docs/arbitr-agent-runbook.md lists each binding for
 Wade's team to confirm.
 
-Never bound, on purpose (tests/agent/adapters/test_straker_tools.py enforces it):
-the functions that submit, accept or cancel paid work.
+Money. The functions that accept quotes or cancel work are never referenced here.
+`enqueue_document_mt_submission` is referenced in exactly one place,
+`submit_document_translation`, which the core runs only after the approval gate has
+verified a click from the person who asked. tests/agent/test_adapters_static.py
+enforces both.
 """
 
 from __future__ import annotations
@@ -49,8 +52,10 @@ def build_tools(
     registry.bind("offer_form", binder.offer_form)
     registry.bind("set_digest", binder.set_digest)
     registry.bind("explain", binder.explain)
+    registry.bind("post_translation_in_thread", binder.post_translation_in_thread)
     if native_document_quotes:
         registry.bind("request_document_quote", binder.request_document_quote)
+        registry.bind("submit_document_translation", binder.submit_document_translation)
     return registry
 
 
@@ -205,6 +210,35 @@ class _Bindings:
             text, tool_input["target_language"], facts.thread_ts
         )
 
+    async def post_translation_in_thread(
+        self, facts: AgentFacts, tool_input: dict[str, Any]
+    ) -> ToolOutcome:
+        """An explicit request in a channel thread is its own record, so no click, like the
+        translate shortcut today. Attribution and a requester-only Remove button are shown in
+        the POC but not built: the translated message is posted by the app's own
+        slack:direct:mt:result handler, so they need a change there."""
+        if facts.surface != "mention" or not facts.thread_ts:
+            return ToolOutcome(
+                content="Only available when mentioned in a channel thread.",
+                is_error=True,
+            )
+        message_ts = tool_input.get("message_ts") or facts.thread_ts
+        replies = await self._client.conversations_replies(
+            channel=facts.channel_id, ts=facts.thread_ts, limit=200
+        )
+        match = [
+            m
+            for m in replies.get("messages", [])
+            if m.get("ts") == message_ts and m.get("text")
+        ]
+        if not match:
+            return ToolOutcome(
+                content="That message could not be found in this thread.", is_error=True
+            )
+        return await self._request_translation(
+            match[0]["text"], tool_input["target_language"], facts.thread_ts
+        )
+
     async def post_translation_publicly(
         self, facts: AgentFacts, tool_input: dict[str, Any]
     ) -> ToolOutcome:
@@ -226,57 +260,43 @@ class _Bindings:
 
     # ------------------------------------------------------------------ documents
 
-    async def request_document_quote(
-        self, facts: AgentFacts, tool_input: dict[str, Any]
-    ) -> ToolOutcome:
-        """Same steps, in the same order, as the document form's submit handler
-        (app/slack/handlers/document_mt.py, handle_document_mt_job), up to the quote
-        request. It stops there: the app's quote message and Accept button do the rest.
-        Off unless AGENT_NATIVE_DOCUMENT_QUOTES is true."""
-        from app.auth.connector import user_may_receive_quotes
-        from app.saq_jobs import enqueue_document_mt_quote_preflight
-        from app.slack.document_mt_quotes import new_document_mt_quote_id
+    async def _validated_document_request(
+        self, tool_input: dict[str, Any]
+    ) -> tuple[ToolOutcome | None, str, list[str], list[dict[str, Any]]]:
+        """The checks the document form's submit handler makes
+        (app/slack/handlers/document_mt.py, handle_document_mt_job), in the same order,
+        with the same helpers. Returns (problem, source, targets, files)."""
         from app.slack.file_submissions import slack_file_submission_payload
         from app.slack.language_validation import get_same_family_target_codes
         from app.slack.listener_actions import get_accessible_slack_files
         from app.slack.middleware import require_ray_client
         from app.slack.select_options import get_language_options
 
-        context = self._context
-        if not await require_ray_client(
-            context, prompt_login=False, allow_org_billing=True
-        ):
-            return ToolOutcome(
-                content="The account check did not pass. The app has shown the person what to do."
-            )
-        if not await user_may_receive_quotes(context.get("ray")):
-            return ToolOutcome(
-                content="Not available for this person. Use offer_form with document_translation.",
-                is_error=True,
-            )
+        def problem(text: str, is_error: bool = True):
+            return ToolOutcome(content=text, is_error=is_error), "", [], []
 
+        if not await require_ray_client(
+            self._context, prompt_login=False, allow_org_billing=True
+        ):
+            return problem(
+                "The account check did not pass. The app has shown the person what to do.",
+                False,
+            )
         source = tool_input.get("source_language")
         targets = [str(t) for t in tool_input.get("target_languages", [])]
         if not source:
-            return ToolOutcome(
-                content="Ask the person which language the document is written in.",
-                is_error=True,
-            )
+            return problem("Ask the person which language the document is written in.")
         if not targets:
-            return ToolOutcome(
-                content="Ask the person which languages they want.", is_error=True
-            )
+            return problem("Ask the person which languages they want.")
         known = {option["value"] for option in await get_language_options()}
         unknown = [code for code in [source, *targets] if code not in known]
         if unknown:
-            return ToolOutcome(
-                content=f"These language codes are not available: {', '.join(unknown)}.",
-                is_error=True,
+            return problem(
+                f"These language codes are not available: {', '.join(unknown)}."
             )
         if source in targets or get_same_family_target_codes(source, targets):
-            return ToolOutcome(
-                content="The source language cannot also be a target, including regional variants.",
-                is_error=True,
+            return problem(
+                "The source language cannot also be a target, including regional variants."
             )
 
         files = [
@@ -288,18 +308,34 @@ class _Bindings:
             for f in self._message.get("files", [])
         ]
         if not files:
-            return ToolOutcome(
-                content="No files are attached. Ask the person to attach the document.",
-                is_error=True,
+            return problem(
+                "No files are attached. Ask the person to attach the document."
             )
         accessible, _missing = await get_accessible_slack_files(self._client, files)
         accessible_ids = {str(f["id"]) for f in accessible if f.get("id")}
         files = [f for f in files if str(f["id"]) in accessible_ids]
         if not files:
+            return problem("The app cannot access those files in this conversation.")
+        return None, source, targets, files
+
+    async def request_document_quote(
+        self, facts: AgentFacts, tool_input: dict[str, Any]
+    ) -> ToolOutcome:
+        """People who can see quotes. Prices only: the app's quote message and Accept
+        button do the rest. Off unless AGENT_NATIVE_DOCUMENT_QUOTES is true."""
+        from app.auth.connector import user_may_receive_quotes
+        from app.saq_jobs import enqueue_document_mt_quote_preflight
+        from app.slack.document_mt_quotes import new_document_mt_quote_id
+
+        context = self._context
+        if not await user_may_receive_quotes(context.get("ray")):
             return ToolOutcome(
-                content="Arbitr cannot access those files in this conversation.",
+                content="Not available for this person. Use submit_document_translation.",
                 is_error=True,
             )
+        bad, source, targets, files = await self._validated_document_request(tool_input)
+        if bad is not None:
+            return bad
 
         quote_id = new_document_mt_quote_id()
         await enqueue_document_mt_quote_preflight(
@@ -320,6 +356,41 @@ class _Bindings:
             content="Quote requested. It will arrive as its own message with an Accept button. Do not state a price.",
             card_detail=copy.CARD_DETAIL_REQUESTED,
             waits_for_backend=True,
+        )
+
+    async def submit_document_translation(
+        self, facts: AgentFacts, tool_input: dict[str, Any]
+    ) -> ToolOutcome:
+        """People who cannot see quotes. GATED: the core runs this only after the approval
+        gate has verified a click from the person who asked. It makes the same call the
+        document form's Submit makes for them today (handle_document_mt_job, the branch
+        where user_may_receive_quotes is false). The worker task owns download, upload,
+        duplicate tracking and publication, exactly as for the form."""
+        from app.auth.connector import user_may_receive_quotes
+        from app.saq_jobs import enqueue_document_mt_submission
+
+        context = self._context
+        if await user_may_receive_quotes(context.get("ray")):
+            return ToolOutcome(
+                content="This person sees quotes. Use request_document_quote.",
+                is_error=True,
+            )
+        bad, source, targets, files = await self._validated_document_request(tool_input)
+        if bad is not None:
+            return bad
+        await enqueue_document_mt_submission(
+            user_id=context["user_id"],
+            team_id=context["team_id"],
+            enterprise_id=context.get("enterprise_id"),
+            channel_id=context["channel_id"],
+            files=files,
+            source_language=source,
+            target_languages=targets,
+            quote_id=None,
+        )
+        return ToolOutcome(
+            content="Submitted. The translation service will deliver the files to this conversation.",
+            card_detail=copy.CARD_DETAIL_HANDED_OVER,
         )
 
     # ------------------------------------------------------------------ the rest
