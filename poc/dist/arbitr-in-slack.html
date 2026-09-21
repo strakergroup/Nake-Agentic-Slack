@@ -1,0 +1,46 @@
+<title>Arbitr in Slack</title>
+<link rel="stylesheet" href="vendor/arbitr-ds/fonts.woff2.css">
+<link rel="stylesheet" href="vendor/arbitr-ds/tokens/colors.css">
+<link rel="stylesheet" href="vendor/arbitr-ds/tokens/typography.css">
+<link rel="stylesheet" href="vendor/arbitr-ds/tokens/spacing.css">
+<link rel="stylesheet" href="vendor/arbitr-ds/tokens/radius.css">
+<link rel="stylesheet" href="vendor/arbitr-ds/tokens/shadow.css">
+<link rel="stylesheet" href="css/frame.css">
+<link rel="stylesheet" href="css/slack.css">
+<div class="page">
+  <header class="masthead">
+    <img class="wordmark" src="vendor/arbitr-ds/assets/logo/wordmark-primary.svg" alt="Arbitr" width="132" height="44">
+    <p class="eyebrow">Simulation. Scripted data. Names and amounts are illustrative.</p>
+    <h1>Arbitr in Slack: the agent experience</h1>
+    <p class="lede">State a goal. Watch the plan. Approve anything that costs money. Six scripted scenarios show what people in a workspace will see.</p>
+  </header>
+
+  <div class="toolbar">
+    <nav class="scenarios" id="scenarios" aria-label="Scenarios"></nav>
+    <div class="ibm-toggle" id="ibm-toggle">
+      <button type="button" role="switch" aria-checked="false" id="ibm-switch" class="switch" aria-labelledby="ibm-label"><span></span></button>
+      <span id="ibm-label">IBM workspace</span>
+    </div>
+  </div>
+
+  <main class="workbench">
+    <section class="stage-card" aria-label="Slack simulation">
+      <div id="stage" class="slack" aria-live="polite"></div>
+      <div class="controls">
+        <button type="button" id="next" class="btn btn-primary">Next</button>
+        <button type="button" id="restart" class="btn btn-outline">Restart</button>
+        <span class="counter" id="counter"></span>
+        <span class="hint">Right arrow advances. R restarts.</span>
+      </div>
+    </section>
+    <aside class="notes-card" aria-label="Presenter notes">
+      <p class="eyebrow">Presenter notes</p>
+      <div id="notes" class="notes"></div>
+    </aside>
+  </main>
+
+  <footer class="colophon">
+    <p>Nothing on this page is connected to Slack, to a language model, or to a translation service. It is a scripted illustration of a design.</p>
+  </footer>
+</div>
+<script type="module" src="js/main.js"></script>
