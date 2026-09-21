@@ -85,3 +85,46 @@ test('the scenario object is never mutated', () => {
   p.next(); p.next(); p.next();
   assert.equal(JSON.stringify(demo), before);
 });
+
+// ---- scenario graph integrity ----
+import { scenarios } from '../js/scenarios.js';
+
+test('six scenarios with unique ids in the agreed order', () => {
+  assert.deepEqual(scenarios.map((s) => s.id), ['document', 'jobs', 'suggestion', 'handoff', 'ibm', 'home']);
+});
+
+for (const s of scenarios) {
+  test(`${s.id}: every next and choice target exists`, () => {
+    assert.ok(s.steps[s.start], 'start exists');
+    for (const [id, step] of Object.entries(s.steps)) {
+      if (step.next) assert.ok(s.steps[step.next], `${id}.next -> ${step.next}`);
+      for (const c of step.choices ?? []) if (c.next) assert.ok(s.steps[c.next], `${id}.${c.id} -> ${c.next}`);
+    }
+  });
+
+  test(`${s.id}: every branch reaches an end within 60 steps, in both modes`, () => {
+    for (const ibm of [false, true]) {
+      const walk = (path) => {
+        const p = createPlayer(s, { ibm });
+        const picks = [...path];
+        for (let i = 0; i < 60 && !p.state.done; i++) {
+          if (p.state.awaiting) {
+            if (picks.length === 0) return p.state.awaiting.choices.map((c) => c.id);
+            p.choose(picks.shift());
+          } else p.next();
+        }
+        assert.equal(p.state.done, true, `${s.id} ${JSON.stringify(path)} ibm=${ibm}`);
+        return [];
+      };
+      const queue = [[]];
+      const seen = new Set();
+      while (queue.length) {
+        const path = queue.shift();
+        const key = path.join('>');
+        if (seen.has(key) || path.length > 4) continue;
+        seen.add(key);
+        for (const id of walk(path)) queue.push([...path, id]);
+      }
+    }
+  });
+}
