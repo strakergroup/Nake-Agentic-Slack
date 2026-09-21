@@ -24,6 +24,10 @@ test('flags exclamation marks', () => {
 test('flags the word users', () => {
   assert.deepEqual(rules('Users can mute this'), ['no-users']);
 });
+test('flags we and our, because a human we blurs who acted', () => {
+  assert.deepEqual(rules('We have started the job'), ['no-we']);
+  assert.deepEqual(rules('USD 6.00 for us-east'), []);
+});
 test('flags retired and off-limits words', () => {
   assert.deepEqual(rules('A seamless experience'), ['retired-word']);
   assert.deepEqual(rules('Your trust score is 92'), ['off-limits-claim']);

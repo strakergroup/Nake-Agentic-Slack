@@ -3,7 +3,7 @@
 const LENS = 'vendor/arbitr-ds/assets/logo/lens-device-primary.svg';
 const DISCLAIMER = 'AI output can be inaccurate. Human review is available on any job.';
 const STATUS_LABEL = { working: 'Working', waiting: 'Waiting on you', ready: 'Ready' };
-const TASK_LABEL = { pending: 'Not started', in_progress: 'Working', complete: 'Done', waiting: 'Waiting' };
+const TASK_LABEL = { pending: 'Not started', in_progress: 'Working', complete: 'Done', error: 'Failed' };
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -88,7 +88,7 @@ const renderers = {
 
   plan(item) {
     const card = el('div', 'plan');
-    card.append(el('div', 'plan-title', 'Plan'));
+    card.append(el('div', 'plan-title', item.title || 'Plan'));
     for (const t of item.tasks) {
       const row = el('div', `task task-${t.state}`);
       row.append(el('span', 'task-state', TASK_LABEL[t.state]), el('span', 'task-title', t.title), el('span', 'task-detail', t.detail));
@@ -101,17 +101,13 @@ const renderers = {
     const card = el('div', 'quote');
     for (const line of item.lines) {
       const row = el('div', 'quote-line');
-      row.append(el('span', '', line.label), el('span', 'amount', `${line.amount} ${item.unit}`));
+      row.append(el('span', '', line.label), el('span', 'amount', line.amount));
       card.append(row);
     }
     const total = el('div', 'quote-line quote-total');
-    total.append(el('span', '', 'Total'), el('span', 'amount', `${item.total} ${item.unit}`));
+    total.append(el('span', '', 'Total'), el('span', 'amount', item.total));
     card.append(total);
-    if (item.footnote) {
-      const foot = el('p', 'quote-foot', item.footnote);
-      if (item.link) foot.append(' ', el('span', 'fake-link', item.link));
-      card.append(foot);
-    }
+    if (item.footnote) card.append(el('p', 'quote-foot', item.footnote));
     const wrap = el('div', 'indent');
     wrap.append(card);
     return wrap;
@@ -131,18 +127,75 @@ const renderers = {
 
   ephemeral(item, onChoose) {
     const box = el('div', 'ephemeral');
-    box.append(el('p', 'ephemeral-label', 'Only visible to you'));
+    box.append(el('p', 'ephemeral-label', item.label || 'Only visible to you'));
     box.append(message({ avatar: arbitrAvatar(), name: 'Arbitr', tag: 'AI agent', body: [...paragraphs(item.text), ...(item.choices ? [choiceRow(item, onChoose)] : [])] }));
     return box;
   },
 
   thread_reply(item) {
-    const wrap = el('div', 'thread');
-    wrap.append(el('p', 'thread-label', '1 reply'));
     const body = paragraphs(item.text);
     body[0].lang = 'ja';
     body.push(el('p', 'attribution', item.attribution));
-    wrap.append(message({ avatar: arbitrAvatar(), name: 'Arbitr', tag: 'AI agent', body }));
+    return message({ avatar: arbitrAvatar(), name: 'Arbitr', tag: 'AI agent', body });
+  },
+
+  prompts(item) {
+    const wrap = el('div', 'prompts');
+    wrap.append(el('p', 'prompts-title', item.title));
+    const row = el('div', 'choices');
+    for (const p of item.prompts) {
+      const b = el('button', 'sbtn sbtn-prompt', p);
+      b.type = 'button';
+      b.disabled = true;
+      row.append(b);
+    }
+    wrap.append(row);
+    return wrap;
+  },
+
+  divider(item) {
+    const d = el('div', 'day-divider');
+    d.append(el('span', '', item.label));
+    return d;
+  },
+
+  notice(item) {
+    const n = el('div', 'notice');
+    n.append(el('span', 'notice-app', 'Slack notification'), el('span', 'notice-text', item.text));
+    return n;
+  },
+
+  system(item) {
+    return el('p', 'system-line', item.text);
+  },
+
+  existing(item) {
+    const body = paragraphs(item.text);
+    return message({ avatar: arbitrAvatar(), name: 'Arbitr', tag: 'Existing app message', body });
+  },
+
+  feedback() {
+    const wrap = el('div', 'indent feedback');
+    for (const label of ['Helpful', 'Not helpful']) {
+      const b = el('button', 'sbtn sbtn-quiet', label);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        wrap.querySelectorAll('button').forEach((x) => { x.disabled = true; });
+        b.classList.add('sbtn-chosen');
+      });
+      wrap.append(b);
+    }
+    return wrap;
+  },
+
+  preview(item) {
+    const box = el('div', 'preview');
+    box.append(el('p', 'preview-where', item.where));
+    const text = el('p', 'msg-text', item.text);
+    text.lang = 'ja';
+    box.append(text, el('p', 'attribution', item.attribution));
+    const wrap = el('div', 'indent');
+    wrap.append(box);
     return wrap;
   },
 
@@ -180,7 +233,7 @@ const renderers = {
     for (const block of item.blocks) {
       const section = el('section', 'home-block');
       const title = el('div', 'home-block-title', block.title);
-      if (block.isNew) title.append(el('span', 'pill pill-new', 'New'));
+      if (block.tag) title.append(el('span', `pill pill-${block.tag.toLowerCase()}`, block.tag));
       if (block.adminOnly) title.append(el('span', 'pill', 'Admins only'));
       section.append(title);
       if (block.type === 'jobs') {
@@ -249,11 +302,20 @@ export function render(stageEl, scenario, state, { onChoose, label, fresh } = {}
   for (const item of state.items) {
     const draw = renderers[item.kind];
     if (!draw) throw new Error(`no renderer for kind: ${item.kind}`);
-    const node = draw(item, onChoose);
-    // A thread reply belongs under the message it answers, not under the
-    // private suggestion that triggered it.
-    if (item.kind === 'thread_reply' && stream.children.length > 1) stream.insertBefore(node, stream.children[1]);
-    else stream.append(node);
+    let node = draw(item, onChoose);
+    if (item.inThread || item.kind === 'thread_reply') {
+      // Consecutive thread items share one thread container under the parent message.
+      let thread = stream.lastElementChild;
+      if (!thread || !thread.classList.contains('thread')) {
+        thread = el('div', 'thread');
+        thread.append(el('p', 'thread-label', 'Thread'));
+        stream.append(thread);
+      }
+      thread.append(node);
+      node = thread;
+    } else {
+      stream.append(node);
+    }
     lastNode = node;
   }
   if (fresh && lastNode) lastNode.classList.add('is-new');

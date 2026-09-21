@@ -89,8 +89,8 @@ test('the scenario object is never mutated', () => {
 // ---- scenario graph integrity ----
 import { scenarios } from '../js/scenarios.js';
 
-test('six scenarios with unique ids in the agreed order', () => {
-  assert.deepEqual(scenarios.map((s) => s.id), ['document', 'jobs', 'suggestion', 'handoff', 'ibm', 'home']);
+test('nine scenarios with unique ids in the agreed order', () => {
+  assert.deepEqual(scenarios.map((s) => s.id), ['document', 'next-day', 'jobs', 'mention', 'suggestion', 'handoff', 'failures', 'ibm', 'home']);
 });
 
 for (const s of scenarios) {

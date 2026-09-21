@@ -45,7 +45,7 @@
 .task-state{font-size:11px;font-weight:700;border-radius:3px;padding:1px 6px;text-align:center;border:1px solid var(--s-line);background:var(--s-soft);color:var(--s-muted)}
 .task-in_progress .task-state{background:#e8f5fa;border-color:#b7dcea;color:#0b4c8c}
 .task-complete .task-state{background:#e6f4ef;border-color:#a9d8c8;color:#00553e}
-.task-waiting .task-state{background:#fff6e0;border-color:#f0d48a;color:#6b4e00}
+.task-error .task-state{background:#fdecea;border-color:#f1b5b0;color:#8a1c14}
 .task-pending .task-title{color:var(--s-muted)}
 .task-detail{color:var(--s-muted);text-align:right}
 .quote-line{display:flex;justify-content:space-between;gap:16px;padding:3px 0}
@@ -89,12 +89,27 @@
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--s-muted)}
 .pill{font-size:11px;font-weight:700;border:1px solid var(--s-line);background:var(--s-soft);border-radius:10px;padding:1px 8px;color:var(--s-muted)}
 .pill-new{background:#e8f5fa;border-color:#b7dcea;color:#0b4c8c}
+.pill-planned{background:#f3effc;border-color:#cfc2ee;color:#4a2f8f}
+.pill-concept{background:#fff6e0;border-color:#f0d48a;color:#6b4e00}
 .segmented{display:inline-flex;border:1px solid #bbbbbb;border-radius:4px;overflow:hidden}
 .seg{font:inherit;font-size:13px;font-weight:700;padding:6px 14px;border:none;border-right:1px solid #bbbbbb;background:#fff;cursor:pointer;color:var(--s-text)}
 .seg:last-child{border-right:none}
 .seg[aria-checked="true"]{background:var(--s-text);color:#fff}
 .home-helper{font-size:12px;color:var(--s-muted);margin-top:6px !important}
 
+.prompts{border:1px solid var(--s-line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.prompts-title{font-weight:900}
+.sbtn-prompt:disabled,.sbtn-quiet:disabled{opacity:1}
+.sbtn-quiet{font-weight:400;color:var(--s-muted)}
+.feedback{flex-direction:row !important}
+.day-divider{display:flex;align-items:center;gap:10px;color:var(--s-muted);font-size:12px;font-weight:700}
+.day-divider::before,.day-divider::after{content:"";flex:1;border-top:1px solid var(--s-line)}
+.notice{align-self:flex-end;max-width:min(100%,340px);background:#1d1c1d;color:#fff;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.notice-app{font-size:11px;opacity:.7;font-weight:700}
+.system-line{color:var(--s-muted);font-size:13px;font-style:italic;text-align:center}
+.preview{border:1px solid var(--s-line);border-left:4px solid #bbbbbb;border-radius:4px;padding:8px 12px;display:flex;flex-direction:column;gap:4px;width:min(100%,520px)}
+.preview-where{font-size:12px;font-weight:700;color:var(--s-muted)}
+.thread .indent{margin-left:46px}
 .composer{margin:0 16px 16px;border:1px solid #bbbbbb;border-radius:8px;padding:10px 12px;color:var(--s-muted);font-size:14px}
 
 .stream > .is-new{animation:step-in .25s ease both}
