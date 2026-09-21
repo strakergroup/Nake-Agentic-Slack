@@ -4,7 +4,7 @@ Subject: Arbitr agent for the Slack app: a branch for you to try in dev, nothing
 
 Hi Wade,
 
-I've been working on where the Slack app goes next, and I have something for your team to look at. Nothing of yours has been changed: no pushes to the repo, no change to the live Slack app or its listing, no credentials used. It was all done on a local copy.
+I've been working on where the Slack app goes next, and I have something for your team to look at. Nothing of yours has been changed: no pushes to your repo, no change to the live Slack app or its listing, no credentials used. It was done on a local copy and lives in its own repo.
 
 **What it is.** An agent layer for the Slack app, under the Arbitr name. Someone says what they need in plain words in a DM, the agent panel or an @-mention, and it uses the functions the app already has. It replaces the Watson intent matcher for free text. Shortcuts, `/straker`, every form and the Home tab stay exactly as they are.
 
@@ -25,7 +25,12 @@ Nine scenes, with presenter notes that explain the Slack platform constraints be
 2. Someone to run the checklist on a dev Slack app (there is a separate `manifest.agent.yml`; please don't apply it to production, since switching to the agent view is one-way and the new scope forces a reinstall).
 3. Answers to the ten questions at the end of the run-book. They are the places I had to guess.
 
-**How to get the code.** Attached is `arbitr-agent.bundle` (`git fetch arbitr-agent.bundle arbitr-agent:arbitr-agent`), plus the same commits as patches. If you'd rather have it as a branch on the repo, tell me and I'll push `arbitr-agent` only, no other branch.
+**Where it lives.** A separate private repo in the org, so your repository is untouched: https://github.com/strakergroup/Nake-Agentic-Slack
+
+- `main` has the spec, the POC source and the documents. The README is the map.
+- `arbitr-agent` is a full copy of `slack-straker-translate` with the agent on top of your `master` at `594bff3d`.
+- See exactly what it adds (13 commits, 51 files): https://github.com/strakergroup/Nake-Agentic-Slack/compare/upstream-master...arbitr-agent
+- To try it in your repo: `git remote add nake-agent https://github.com/strakergroup/Nake-Agentic-Slack.git && git fetch nake-agent arbitr-agent && git checkout -b arbitr-agent nake-agent/arbitr-agent`. The same commits are in `handover/patches/` if you prefer patches.
 
 **How we'll know it landed.** Your filled-in checklist. If steps 1, 2, 6, 8 and 16 pass, the approach holds and the rest is tuning. Steps 17 to 20 are the ones that involve money; they wait for your review.
 
