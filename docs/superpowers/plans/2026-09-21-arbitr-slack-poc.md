@@ -607,7 +607,7 @@ test('index.html text passes the voice rules', () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `node --test tests/`
+Run: `node --test tests/*.test.mjs`
 Expected: FAIL, cannot find module `../js/scenarios.js`.
 
 - [ ] **Step 3: Write `poc/js/scenarios.js`**
@@ -643,7 +643,7 @@ const document = {
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `node --test tests/`
+Run: `node --test tests/*.test.mjs`
 Expected: all pass except `index.html text passes the voice rules`, which fails because `index.html` does not exist yet. That test goes green in Task 4.
 
 - [ ] **Step 5: Commit**
@@ -669,7 +669,7 @@ Structure: `<header>` with `wordmark-primary.svg` (alt "Arbitr"), the title "Arb
 
 - [ ] **Step 3: Run the tests**
 
-Run: `node --test tests/`
+Run: `node --test tests/*.test.mjs`
 Expected: all pass, including `index.html text passes the voice rules`.
 
 - [ ] **Step 4: Preview and screenshot the empty frame**
@@ -700,7 +700,7 @@ git add poc/index.html poc/css/frame.css && git commit -m "feat(poc): Design Sys
 - [ ] **Step 5: Run tests and commit**
 
 ```bash
-node --test tests/ && git add poc && git commit -m "feat(poc): conversation renderer, plan cards, quotes and approvals"
+node --test tests/*.test.mjs && git add poc && git commit -m "feat(poc): conversation renderer, plan cards, quotes and approvals"
 ```
 
 ---
@@ -719,14 +719,14 @@ node --test tests/ && git add poc && git commit -m "feat(poc): conversation rend
 - [ ] **Step 4: Run tests and commit**
 
 ```bash
-node --test tests/ && git add poc && git commit -m "feat(poc): channel suggestion, form hand-off, IBM comparison and Home tab"
+node --test tests/*.test.mjs && git add poc && git commit -m "feat(poc): channel suggestion, form hand-off, IBM comparison and Home tab"
 ```
 
 ---
 
 ## Task 7: Verification before publishing
 
-- [ ] **Step 1: Full test run.** `node --test tests/`. Expected: 0 failures. Paste the summary line into the report to Nake.
+- [ ] **Step 1: Full test run.** `node --test tests/*.test.mjs`. Expected: 0 failures. Paste the summary line into the report to Nake.
 - [ ] **Step 2: Screenshots, local.** For each of the six scenarios at its most informative step (scenario 1 at the quote, and again after Approve): one desktop screenshot and one at the `mobile` preset. Twelve or more images. Reset the viewport to `desktop` at the end.
 - [ ] **Step 3: Lens device at small size.** Zoom on an agent avatar in a screenshot. If the inner ring has closed up at 36px, raise the avatar's rendered size or report it to Nake as the design system predicts for sizes under 24px.
 - [ ] **Step 4: Accessibility pass.** Tab through the page: every control reachable, visible focus ring in indigo, status never carried by colour alone, `aria-live` announces new items. Fix what fails.
