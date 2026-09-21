@@ -2,7 +2,9 @@
 
 English source strings. The adapter passes them through the app's `_()` helper
 so they are localised like the rest of the app. Voice rules (Arbitr Design
-System v2): Arbitr is the named actor, never "users", no exclamation marks, no
+System v2, with Nake's ruling of 2026-09-21): in conversation the agent speaks as
+"I"; notices, buttons and attributions name Arbitr; never "we", which would blur
+the automated actor into a human team. Never "users", no exclamation marks, no
 emoji, no em dashes. A refusal has three parts in order: what happened, why,
 what happens next. A wait for approval is the product working, never an error.
 """
@@ -15,16 +17,11 @@ AGENT_TAG = "AI agent"
 DISCLAIMER = "AI output can be inaccurate. Human review is available on any job."
 
 # --- status and plan cards -------------------------------------------------
-CARD_LOOKUP_JOBS = "Look up your jobs"
-CARD_ACCOUNT = "Check your account"
 CARD_TRANSLATE_TEXT = "Translate the text"
 CARD_PRICE = "Price the translation"
-CARD_APPROVAL = "Your approval"
 CARD_DELIVER = "Translate and deliver here"
 CARD_POST = "Post the translation"
 CARD_FORM = "Open the form"
-CARD_DETAIL_WAITING = "Waiting on you"
-CARD_DETAIL_DECLINED = "Declined"
 CARD_DETAIL_REQUESTED = "Requested"
 CARD_DETAIL_QUOTE_READY = "Quote ready"
 CARD_DETAIL_DELIVERED = "Delivered"
@@ -32,68 +29,82 @@ CARD_DETAIL_DELIVERED = "Delivered"
 # --- approvals -------------------------------------------------------------
 APPROVE = "Approve"
 DECLINE = "Decline"
-POST_PUBLICLY_PROMPT = "Arbitr will post this translation in the thread, visible to everyone in the channel."
+POST_PUBLICLY_PROMPT = (
+    "I can post this translation in the thread for everyone to see. "
+    "Inline translation is metered against your organization's balance, as it is today. "
+    "You asked, so it is your click."
+)
 POST_PUBLICLY_APPROVE = "Post it"
 NOT_NOW = "Not now"
 WAITING_FOR_APPROVAL = (
     "Waiting for the person to approve. Do not claim the action has happened."
 )
 
-APPROVED = "Approved. Arbitr is on it."
+APPROVED = "Approved. I'm on it."
 DECLINED = "Declined. Nothing was posted and nothing was charged. Ask again whenever you need it."
 
 APPROVAL_ERRORS = {
     "wrong_user": (
-        "That approval belongs to someone else. Arbitr only accepts a click from the person who asked. "
-        "Ask for it yourself and Arbitr will prepare a new one."
+        "That approval belongs to someone else. I only accept a click from the person who asked. "
+        "Ask for it yourself and I'll prepare a new one."
     ),
     "expired": (
-        "That approval has expired. Arbitr does not act on old approvals in case things have changed. "
-        "Ask again and Arbitr will prepare a new one."
+        "That approval has expired. I don't act on old approvals in case things have changed. "
+        "Ask again and I'll prepare a new one."
     ),
     "unknown": (
-        "Arbitr could not find that approval. It may belong to an earlier conversation. "
-        "Ask again and Arbitr will prepare a new one."
+        "I couldn't find that approval. It may belong to an earlier conversation. "
+        "Ask again and I'll prepare a new one."
     ),
     "already_used": (
-        "That approval was already used. Arbitr runs an approved action once only. "
+        "That approval was already used. I run an approved action once only. "
         "Nothing further has happened."
     ),
     "stopped": (
-        "That request was stopped. Arbitr does not act on approvals from a stopped request. "
+        "That request was stopped. I don't act on approvals from a stopped request. "
         "Ask again when you are ready."
     ),
 }
 
 # --- failure behaviour -----------------------------------------------------
 FALLBACK_MODEL_DOWN = (
-    "Arbitr could not think that through just now. The language model did not respond. "
+    "I couldn't think that through just now. The language model did not respond. "
     "The buttons below still work, or try again in a moment."
 )
 FALLBACK_TOOL_FAILED = (
-    "Arbitr could not complete that step. The translation service did not respond as expected. "
+    "I couldn't complete that step. The translation service did not respond as expected. "
     "Nothing was charged, and you can try again in a moment."
 )
 FALLBACK_TOO_MANY_STEPS = (
-    "Arbitr stopped to avoid going in circles. The request needed more steps than expected. "
-    "Tell Arbitr the one thing you need first."
+    "I stopped to avoid going in circles. The request needed more steps than expected. "
+    "Tell me the one thing you need first."
 )
 FALLBACK_REFUSED = (
-    "Arbitr cannot help with that request. It is outside what this app does. "
-    "Arbitr can translate text and documents, check your jobs, and open the forms for media and review."
+    "I can't help with that request. It is outside what this app does. "
+    "I can translate text and documents, check your jobs, and open the forms for media and review."
 )
-STOPPED = "Stopped. Anything not yet approved has been cancelled. Nothing further will happen."
-
+STOPPED = (
+    "Stopped. Anything not yet approved has been cancelled. "
+    "Work you already approved and paid for will still be delivered."
+)
 QUICK_ACTION_JOBS = "My jobs"
 QUICK_ACTION_NEW = "New translation"
 QUICK_ACTION_HELP = "Help"
 
 # --- hand-offs to the existing forms ----------------------------------------
 HANDOFF_INTRO = {
-    "document_translation": "Document translation runs through the document form. Open it with your file attached.",
-    "media": "Subtitles and transcripts run through the media form. Open it with your file attached.",
-    "quality_evaluation": "Quality evaluation runs through its own form. Open it with your file attached.",
-    "human_translation": "Human translation runs through its own form. Open it with your file attached.",
+    "document_translation": (
+        "Document translation runs through the document form. Open it and your file will already be attached."
+    ),
+    "media": (
+        "Subtitles and transcripts run through the media form. Open it and your file will already be attached."
+    ),
+    "quality_evaluation": (
+        "Quality evaluation runs through its own form. Open it and your file will already be attached."
+    ),
+    "human_translation": (
+        "Human translation runs through its own form. Open it and your file will already be attached."
+    ),
     "new_job": "A new translation job starts from the job form.",
     "channel_settings": "Channel translation settings are changed in the settings form.",
 }
@@ -108,22 +119,22 @@ HANDOFF_BUTTON = {
 
 # --- help and onboarding ----------------------------------------------------
 HELP_GENERAL = (
-    "Arbitr translates text and documents in Slack, checks on your translation jobs, "
-    "and opens the forms for subtitles, quality evaluation and human review. "
+    "I translate text and documents in Slack, check on your translation jobs, "
+    "and open the forms for subtitles, quality evaluation and human review. "
     "Say what you need in your own words."
 )
 HELP_IBM_GENERIC = (
-    "Arbitr translates text and documents in Slack, checks on your translation jobs, "
-    "and opens the forms for subtitles, quality evaluation and human review. "
+    "I translate text and documents in Slack, check on your translation jobs, "
+    "and open the forms for subtitles, quality evaluation and human review. "
     "Your workspace is already set up. Say what you need in your own words."
 )
 HELP_NO_PRICE = (
-    "Arbitr cannot show pricing here. Pricing in this workspace is visible to administrators. "
+    "I can't show pricing here. Pricing in this workspace is visible to administrators. "
     "An administrator can share the quote with you."
 )
 HELP_GETTING_STARTED = (
     "Type what you need, or attach a file and say which languages you want. "
-    "Arbitr shows its plan as it works and asks before anything is posted for others to see."
+    "I show my plan as I work and ask before anything is posted for others to see."
 )
 HELP_PRICING = (
     "Paid work starts with a quote. The quote arrives as its own message with an Accept button, "
@@ -132,9 +143,11 @@ HELP_PRICING = (
 HELP_PRIVACY = (
     "Documents and messages go to the translation service, as they do today. "
     "The language model that runs this conversation sees your request and file names, not file contents. "
-    "Arbitr does not read channel messages to decide whether to make a suggestion."
+    "A suggestion is decided by language detection on Straker's own service, never by the language model."
 )
-CONNECT_NEEDED = "To do that, Arbitr needs your account. Connect it once and you will not be asked again."
+CONNECT_NEEDED = (
+    "To do that, I need your account. Connect it once and you won't be asked again."
+)
 CONNECT_BUTTON = "Connect account"
 
 # Strings that may be shown in IBM workspaces. They must never mention account
@@ -149,14 +162,18 @@ IBM_SAFE = [
 ]
 
 # --- suggestions (no model involved) -----------------------------------------
-SUGGESTION_PRIVATE_LABEL = "Only visible to you"
-SUGGESTION_LANGUAGE_GAP = "Most people in this channel work in {language}. Want this posted in {language} as well?"
+SUGGESTION_LANGUAGE_GAP = (
+    "About your post in {channel}: most people there work in {language}. "
+    "Want a {language} version posted in the thread? "
+    "Inline translation is metered against your organization's balance, as it is today."
+)
 SUGGESTION_ACT = "Post in {language}"
 SUGGESTION_NOT_NOW = "Not now"
 SUGGESTION_NEVER = "Don't suggest this again"
 SUGGESTION_DISMISSED = "No problem. Nothing was posted."
+SUGGESTION_POSTED = "Posted in the thread under your message."
 SUGGESTION_MUTED = (
-    "Done. Arbitr will not suggest translations to you in this channel. "
+    "Done. I won't suggest translations for your posts in that channel. "
     "You can change this in the Arbitr Home tab."
 )
 SUGGESTION_ATTRIBUTION = (
@@ -167,20 +184,22 @@ SUGGESTIONS_ENABLED = (
 )
 ADMIN_ONLY_SUGGESTIONS = (
     "In this workspace only an admin can turn on channel suggestions. "
-    "This keeps administrators in control of where Arbitr speaks first. "
-    "Arbitr can send the request to your admins."
+    "This keeps administrators in control of where I speak first. "
+    "I can send the request to your admins."
 )
 ASK_AN_ADMIN = "Ask an admin"
 
 # --- follow-ups and digest ----------------------------------------------------
-FOLLOWUP_QUOTE_WAITING = "The quote for {name} has been waiting since {day}. Arbitr will not remind you again."
+FOLLOWUP_QUOTE_WAITING = (
+    "The quote for {name} has been waiting since {day}. I won't remind you again."
+)
 FOLLOWUP_DELIVERED = "{name} is ready. Need it in another language?"
 DIGEST_TITLE = "Your translation jobs"
 DIGEST_DELIVERED = "{count} delivered"
 DIGEST_WAITING = "{count} waiting on you"
 DIGEST_IN_PROGRESS = "{count} in progress"
 DIGEST_TEAM = "Your team translated {words} words this week."
-DIGEST_ON = "Digest is on. Arbitr will send it by direct message."
+DIGEST_ON = "Digest is on. I'll send it by direct message."
 DIGEST_OFF = "Digest is off."
 
 # --- Home tab additions --------------------------------------------------------

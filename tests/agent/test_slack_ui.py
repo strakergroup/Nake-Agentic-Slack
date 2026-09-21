@@ -73,7 +73,7 @@ def test_task_chunks_map_card_states():
             "state": "complete",
             "detail": "2 found",
         },
-        {"id": "c2", "title": "Your approval", "state": "waiting", "detail": ""},
+        {"id": "c2", "title": "Deliver here", "state": "pending", "detail": ""},
         {
             "id": "c3",
             "title": "Post the translation",
@@ -137,10 +137,11 @@ def test_every_form_has_a_mapping():
     assert set(slack_ui.FORM_ACTION_IDS) == set(copy.HANDOFF_INTRO)
 
 
-def test_suggestion_has_exactly_three_buttons_and_is_marked_private():
-    blocks = slack_ui.suggestion_blocks("s1", "Japanese")
-    assert blocks[0]["elements"][0]["text"] == "Only visible to you"
-    assert [b["action_id"] for b in blocks[2]["elements"]] == [
+def test_suggestion_is_a_dm_with_exactly_three_buttons_and_the_metering_sentence():
+    blocks = slack_ui.suggestion_blocks("s1", "Japanese", "#launch-global")
+    text = blocks[0]["text"]["text"]
+    assert "#launch-global" in text and "metered" in text
+    assert [b["action_id"] for b in blocks[1]["elements"]] == [
         "agent_suggestion_act",
         "agent_suggestion_later",
         "agent_suggestion_never",
@@ -162,7 +163,7 @@ def test_all_builder_text_follows_the_voice_rules_and_uses_no_emoji():
         slack_ui.approval_blocks(approval()),
         slack_ui.quick_action_blocks(),
         slack_ui.connect_blocks(),
-        slack_ui.suggestion_blocks("s1", "Japanese"),
+        slack_ui.suggestion_blocks("s1", "Japanese", "#launch-global"),
         slack_ui.admin_only_blocks(),
         slack_ui.digest_blocks(["2 delivered"]),
         slack_ui.home_blocks("daily", [], None),

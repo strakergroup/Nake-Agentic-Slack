@@ -75,19 +75,31 @@ POST = ToolCall(
 
 
 @pytest.mark.asyncio
-async def test_plain_answer_streams_with_disclaimer_and_ends_active():
+async def test_plain_answer_streams_without_a_disclaimer_and_ends_active():
     rig = Rig([say("You have two open jobs.")])
     await rig.say()
     assert rig.slack.names() == ["set_status", "stream_start", "stream_stop"]
     assert rig.slack.calls[0][1] == {"status": "processing", "title": "Where's my job?"}
     stop = rig.slack.calls[-1][1]
-    assert (
-        stop["text"].startswith("You have two open jobs.")
-        and copy.DISCLAIMER in stop["text"]
-    )
+    assert stop["text"] == "You have two open jobs."  # a status answer is not AI output
     assert stop["session_status"] == "active"
     assert [t.outcome for t in rig.audit.turns] == ["success"]
     assert rig.audit.turns[0].input_tokens == 100
+
+
+@pytest.mark.asyncio
+async def test_disclaimer_only_on_replies_that_deliver_ai_output():
+    translate = ToolCall(
+        "t1",
+        "translate_text",
+        {"target_language": "ja", "text": "Hello", "use_current_thread": False},
+    )
+    rig = Rig(
+        [call(translate), say("I've requested the Japanese version.")],
+        handlers={"translate_text": ok("requested")},
+    )
+    await rig.say("Put this in Japanese: Hello")
+    assert copy.DISCLAIMER in rig.slack.calls[-1][1]["text"]
 
 
 @pytest.mark.asyncio
@@ -109,15 +121,8 @@ async def test_lookup_runs_immediately_and_result_returns_to_the_model():
             }
         ],
     }
-    plan = (await rig.session()).plan
-    assert plan == [
-        {
-            "id": "c1",
-            "title": copy.CARD_LOOKUP_JOBS,
-            "state": "complete",
-            "detail": "2 found",
-        }
-    ]
+    assert (await rig.session()).plan == []  # a simple look-up shows status only
+    assert "stream_tasks" not in rig.slack.names()
     assert rig.audit.turns[0].tools_called == ["list_jobs"]
 
 
@@ -186,7 +191,12 @@ async def test_valid_click_runs_the_stored_action_once_and_resumes():
     ]
     session = await rig.session()
     assert session.pending == {} and session.status == "active"
-    assert {c["title"]: c["state"] for c in session.plan}[copy.CARD_POST] == "complete"
+    assert [(c["title"], c["state"]) for c in session.plan] == [
+        (copy.CARD_POST, "complete")
+    ]
+    assert (
+        rig.slack.names().count("stream_start") == 2
+    )  # request and execution are two messages
     await rig.runner.handle_approval(rig.facts, approval_id, "U_MIKA", approved=True)
     assert len(rig.ran) == 1
     assert rig.slack.calls[-1] == (
@@ -225,7 +235,9 @@ async def test_decline_runs_nothing_and_says_so():
     await rig.runner.handle_approval(rig.facts, approval_id, "U_MIKA", approved=False)
     assert rig.ran == []
     assert ("post", {"text": copy.DECLINED, "blocks": None}) in rig.slack.calls
-    assert (await rig.session()).status == "active"
+    session = await rig.session()
+    assert session.status == "active"
+    assert session.plan == []  # a declined step is removed, never shown as done
 
 
 @pytest.mark.asyncio
@@ -279,6 +291,7 @@ async def test_stop_cancels_approvals_and_old_clicks_are_refused():
     await rig.runner.handle_stop(rig.facts)
     session = await rig.session()
     assert session.stopped and session.pending == {} and session.status == "active"
+    assert all(c["state"] == "complete" for c in session.plan)
     assert ("post", {"text": copy.STOPPED, "blocks": None}) in rig.slack.calls
     await rig.runner.handle_approval(rig.facts, approval_id, "U_MIKA", approved=True)
     assert rig.ran == []

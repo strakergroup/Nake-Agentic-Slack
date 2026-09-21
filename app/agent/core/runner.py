@@ -44,14 +44,15 @@ _AMOUNT = re.compile(
     re.I,
 )
 
+# Tools that earn a task card. Simple look-ups show the working status only: a
+# one-line plan for "where's my job?" is noise.
 _CARDS: dict[str, str] = {
-    "get_job": copy.CARD_LOOKUP_JOBS,
-    "list_jobs": copy.CARD_LOOKUP_JOBS,
-    "account_status": copy.CARD_ACCOUNT,
     "translate_text": copy.CARD_TRANSLATE_TEXT,
     "request_document_quote": copy.CARD_PRICE,
     "offer_form": copy.CARD_FORM,
 }
+# The AI disclaimer goes on replies that accompany AI output, not on every message.
+_DELIVERS_AI_OUTPUT = {"translate_text", "post_translation_publicly"}
 
 
 class SlackPort(Protocol):
@@ -139,6 +140,7 @@ class AgentRunner:
             turn = _Turn(self._clock())
             if is_new:
                 session.title = _title(text)
+            session.plan = []  # a new message starts a new plan
             await self._slack.set_status(
                 facts, "processing", session.title if is_new else None
             )
@@ -168,9 +170,7 @@ class AgentRunner:
                 return
 
             if not approved:
-                self._card(
-                    session, copy.CARD_APPROVAL, "complete", copy.CARD_DETAIL_DECLINED
-                )
+                self._drop_card(session, copy.CARD_POST)
                 self._note(
                     session, f"The person declined: {approval.summary}", copy.DECLINED
                 )
@@ -183,12 +183,7 @@ class AgentRunner:
 
             await self._slack.set_status(session.facts, "processing")
             session.status = "processing"
-            self._card(
-                session,
-                copy.CARD_APPROVAL,
-                "complete",
-                f"Approved by {session.facts.display_name or clicked_by}",
-            )
+            session.plan = []  # execution is a second message with its own plan
             self._card(session, copy.CARD_POST, "in_progress", "")
             turn.tools.append(approval.tool)
             try:
@@ -225,12 +220,7 @@ class AgentRunner:
                 return
             session.stopped = True
             self._gate.cancel_all(session)
-            for card in session.plan:
-                if card["state"] in ("pending", "waiting", "in_progress"):
-                    card["state"], card["detail"] = (
-                        "complete",
-                        copy.CARD_DETAIL_DECLINED,
-                    )
+            session.plan = [c for c in session.plan if c["state"] == "complete"]
             session.status = "active"
             await self._slack.post(session.facts, copy.STOPPED)
             await self._slack.set_status(session.facts, "active")
@@ -251,12 +241,8 @@ class AgentRunner:
                     "complete",
                     detail or copy.CARD_DETAIL_QUOTE_READY,
                 )
-                self._card(
-                    session, copy.CARD_APPROVAL, "waiting", copy.CARD_DETAIL_WAITING
-                )
                 session.status = "suspended"
             elif kind == "delivered":
-                self._card(session, copy.CARD_APPROVAL, "complete", "")
                 self._card(
                     session,
                     copy.CARD_DELIVER,
@@ -356,7 +342,6 @@ class AgentRunner:
                 summary=copy.POST_PUBLICLY_PROMPT,
                 tool_use_id=call.id,
             )
-            self._card(session, copy.CARD_APPROVAL, "waiting", copy.CARD_DETAIL_WAITING)
             self._card(session, copy.CARD_POST, "pending", "")
             await self._show_plan(session, turn)
             turn.extra_blocks.extend(
@@ -391,7 +376,6 @@ class AgentRunner:
                     outcome.card_detail or "",
                 )
                 if call.name == "request_document_quote":
-                    self._card(session, copy.CARD_APPROVAL, "pending", "")
                     self._card(session, copy.CARD_DELIVER, "pending", "")
             if outcome.blocks:
                 turn.extra_blocks.extend(outcome.blocks)
@@ -409,7 +393,7 @@ class AgentRunner:
         if guarded:
             turn.outcome = "partial"
         turn.violations = [v.rule for v in check_copy(text)]
-        if disclaim and not guarded:
+        if disclaim and not guarded and _DELIVERS_AI_OUTPUT & set(turn.tools):
             text = f"{text}\n\n_{copy.DISCLAIMER}_" if text else copy.DISCLAIMER
         session.status = "suspended" if session.pending else "active"
         blocks = turn.extra_blocks or None
@@ -453,6 +437,10 @@ class AgentRunner:
                 "detail": detail,
             }
         )
+
+    @staticmethod
+    def _drop_card(session: Session, title: str) -> None:
+        session.plan = [c for c in session.plan if c["title"] != title]
 
     @staticmethod
     def _note(session: Session, note: str, reply: str) -> None:

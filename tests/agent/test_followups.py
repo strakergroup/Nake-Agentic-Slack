@@ -21,7 +21,7 @@ def test_quote_waiting_two_days_gets_one_reminder_only():
     assert [f.kind for f in first] == ["quote_waiting"]
     assert (
         "Returns-policy.docx" in first[0].text
-        and "will not remind you again" in first[0].text
+        and "won't remind you again" in first[0].text
     )
     assert plan_followups(jobs, {"TJ48190:quote_waiting"}, NOON) == []
 

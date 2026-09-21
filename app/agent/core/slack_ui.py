@@ -17,7 +17,6 @@ TASK_STATUS = {
     "pending": "pending",
     "in_progress": "in_progress",
     "complete": "complete",
-    "waiting": "pending",
     "error": "error",
 }
 
@@ -213,10 +212,17 @@ def connect_blocks() -> list[dict[str, Any]]:
     ]
 
 
-def suggestion_blocks(suggestion_id: str, language_name: str) -> list[dict[str, Any]]:
+def suggestion_blocks(
+    suggestion_id: str, language_name: str, channel_name: str
+) -> list[dict[str, Any]]:
+    """Sent as a direct message to the author. Ephemeral messages vanish on reload
+    and are unreliable on mobile; a direct message stays put and only they see it."""
     return [
-        _context(copy.SUGGESTION_PRIVATE_LABEL),
-        _section(copy.SUGGESTION_LANGUAGE_GAP.format(language=language_name)),
+        _section(
+            copy.SUGGESTION_LANGUAGE_GAP.format(
+                language=language_name, channel=channel_name
+            )
+        ),
         {
             "type": "actions",
             "block_id": f"agent_suggestion:{suggestion_id}",

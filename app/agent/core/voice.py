@@ -27,6 +27,7 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
     ("capitalise-arbitr", re.compile(r"(?<![/\w.-])arbitr(?![\w-])")),
     ("no-exclamation", re.compile("!")),
     ("no-users", re.compile(r"\busers?\b", re.I)),
+    ("no-we", re.compile(r"\b(We|we|Our|our|ours)\b")),
     (
         "retired-word",
         re.compile(

@@ -47,3 +47,9 @@ def test_flags_retired_names():
 def test_japanese_and_accented_text_is_not_mistaken_for_emoji():
     assert rules("ローンチは10月14日に変更になりました。") == []
     assert rules("Überprüfung abgeschlossen. Tradução concluída.") == []
+
+
+def test_flags_we_and_our_because_a_human_we_blurs_who_acted():
+    assert rules("We have started the job") == ["no-we"]
+    assert rules("USD 6.00 for us-east") == []
+    assert rules("I've requested the quote.") == []
