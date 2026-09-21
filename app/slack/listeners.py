@@ -286,7 +286,7 @@ async def job_search_action(
     await jobs.handle_job_search_action(context=context, client=client, body=body)
 
 
-@app.command(re.compile(r"\/\w*(ray|straker|lc)\w*"))
+@app.command(re.compile(r"\/\w*(ray|straker|lc|arbitr)\w*"))
 @slack_log_decorator
 async def ray_command(
     ack: AsyncAck,

@@ -1,0 +1,122 @@
+# Dev Slack app for the Arbitr agent. A copy of manifest.yml with the agent additions,
+# kept separate so manifest.yml is untouched. See docs/arbitr-agent-runbook.md.
+#
+# Added: agent_view, the assistant:write scope, three agent events, /arbitr beside /straker.
+# Field names follow docs.slack.dev/ai (read 2026-09-21): the migration guide names
+# `agent_view` and `agent_description`. They have not been validated by creating an app;
+# if Slack rejects the manifest, check those two names first.
+#
+# app/slack/listeners.py accepts slash commands containing ray, straker, lc or arbitr.
+display_information:
+  name: Arbitr (dev)
+  description: Get high-quality translations of your files directly in Slack.
+  background_color: "#17395c"
+  long_description:
+    "Straker Translate for Slack helps you streamline your translation tasks all in one place. Manage all of your translation projects without leaving your work environment.\r
+
+    \r
+
+    Users of the Straker LanguageCloud can use Straker Translate for Slack to:\r
+
+    • Check job status\r
+
+    • Receive a job summary\r
+
+    • Request Translations (Submit Quote)\r
+
+    • Approve a quote\r
+
+    • Receive translated files\r
+
+    • Translate your conversations in channels to other languages\r
+
+    \r
+
+    In addition, LanguageCloud admin users can utilize Straker Translate for Slack to:\r
+
+    • Approve new signed-up users\r
+
+    \r
+
+    Install the Straker app to your Slack workspace, connect your account and use Straker’s bot to ask about key events happening in your translation projects, all without having to leave the familiarity of Slack.\r
+
+    \r
+
+    About Straker\r
+
+    - Straker provides next-generation language cloud solutions supported by a state-of-the-art technology stack and robust AI layers to boost productivity, reduce friction and move faster with a new holistic approach to translation and localization. \r
+
+    - By combining technical innovation and linguistic expertise, Straker delivers effortless accuracy through cost-effective and scalable translation solutions to global clients."
+features:
+  agent_view:
+    agent_description: Translate text and documents, check translation jobs, and open the forms for subtitles, quality evaluation and human review.
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Arbitr
+    always_online: true
+  shortcuts:
+    - name: AI Translate
+      type: message
+      callback_id: shortcut_translate
+      description: Translate this message to your locale
+    - name: New Translation Job
+      type: message
+      callback_id: new_job
+      description: Submit a new translation job
+  slash_commands:
+    - command: /arbitr
+      url: <YOUR_DOMAIN>/slack/events
+      description: Job Status, Daily Summary, Submit a New Job
+      usage_hint: "[job reference], my jobs, new"
+      should_escape: false
+    - command: /straker
+      url: <YOUR_DOMAIN>/slack/events
+      description: Job Status, Daily Summary, Submit a New Job
+      usage_hint: "[job reference], my jobs, new"
+      should_escape: false
+oauth_config:
+  redirect_urls:
+    - <YOUR_DOMAIN>/slack/oauth_redirect
+  scopes:
+    bot:
+      - app_mentions:read
+      - assistant:write
+      - channels:history
+      - channels:join
+      - channels:read
+      - chat:write
+      - chat:write.public
+      - commands
+      - files:read
+      - files:write
+      - groups:history
+      - groups:read
+      - im:history
+      - mpim:history
+      - users:read
+      - users:read.email
+settings:
+  event_subscriptions:
+    request_url: <YOUR_DOMAIN>/slack/events
+    bot_events:
+      - app_home_opened
+      - app_mention
+      - app_uninstalled
+      - message.channels
+      - message.groups
+      - message.im
+      - message.mpim
+      - channel_deleted
+      - app_context_changed
+      - agent_session_stopped
+      - agent_session_title_changed
+  interactivity:
+    is_enabled: true
+    request_url: <YOUR_DOMAIN>/slack/events
+    message_menu_options_url: <YOUR_DOMAIN>/slack/events
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

@@ -99,3 +99,13 @@ def test_the_event_bridge_cannot_raise_into_the_router():
     assert len(body) == 1 and isinstance(body[0], ast.Try)
     handler = body[0].handlers[0]
     assert isinstance(handler.type, ast.Name) and handler.type.id == "Exception"
+
+
+def test_the_slash_command_pattern_accepts_arbitr_and_still_accepts_straker():
+    import re
+
+    listeners = (ROOT / "app/slack/listeners.py").read_text()
+    pattern = re.search(r'@app\.command\(re\.compile\(r"(.+?)"\)\)', listeners).group(1)
+    for command in ("/arbitr", "/straker", "/ray", "/lc"):
+        assert re.fullmatch(pattern, command), command
+    assert not re.fullmatch(pattern, "/giphy")
