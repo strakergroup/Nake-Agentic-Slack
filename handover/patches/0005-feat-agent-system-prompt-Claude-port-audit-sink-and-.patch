@@ -1,7 +1,7 @@
 From 6ec5f4fbe05ef5d118a063ea664c78daac2a161d Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 10:55:34 +0100
-Subject: [PATCH 05/11] feat(agent): system prompt, Claude port, audit sink and
+Subject: [PATCH 05/13] feat(agent): system prompt, Claude port, audit sink and
  Slack payload builders
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

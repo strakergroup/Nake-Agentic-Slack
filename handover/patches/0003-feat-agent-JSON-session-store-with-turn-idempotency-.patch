@@ -1,7 +1,7 @@
 From ac7f090e30d0c80f696f840c3ec71c28de6f4beb Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 10:52:30 +0100
-Subject: [PATCH 03/11] feat(agent): JSON session store with turn idempotency,
+Subject: [PATCH 03/13] feat(agent): JSON session store with turn idempotency,
  quote map and locks
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

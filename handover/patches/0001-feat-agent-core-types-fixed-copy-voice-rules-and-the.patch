@@ -1,7 +1,7 @@
 From 5a89655bf74fcce7d4c218691e2606dd95aa2212 Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 10:50:26 +0100
-Subject: [PATCH 01/11] feat(agent): core types, fixed copy, voice rules and
+Subject: [PATCH 01/13] feat(agent): core types, fixed copy, voice rules and
  the isolation guard
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

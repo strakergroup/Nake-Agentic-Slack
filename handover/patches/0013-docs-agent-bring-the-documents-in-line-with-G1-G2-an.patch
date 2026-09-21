@@ -1,0 +1,235 @@
+From 0705f73603d1fbac42f0f745dc23d5b274349a24 Mon Sep 17 00:00:00 2001
+From: Nake Sekander <nake.sekander@strakergroup.com>
+Date: Mon, 21 Sep 2026 11:31:12 +0100
+Subject: [PATCH 13/13] docs(agent): bring the documents in line with G1, G2
+ and the second review
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ docs/arbitr-agent-poc-map.md | 14 ++++---
+ docs/arbitr-agent-runbook.md | 17 +++++---
+ docs/arbitr-agent.md         | 80 +++++++++++++++++++++++-------------
+ 3 files changed, 71 insertions(+), 40 deletions(-)
+
+diff --git a/docs/arbitr-agent-poc-map.md b/docs/arbitr-agent-poc-map.md
+index 754e5c4f..9a83f7c5 100644
+--- a/docs/arbitr-agent-poc-map.md
++++ b/docs/arbitr-agent-poc-map.md
+@@ -10,20 +10,22 @@ in the POC as the target experience and is listed in arbitr-agent.md under "What
+ | Suggested prompts at session start | Not built | Needs `app_home_opened`, which already has a listener here. |
+ | Agent asks which slide instead of guessing | Built | `core/prompt.py` privacy rule; the model never receives file contents (`runner._user_content`). |
+ | "Actually, add French too" | Built | Multi-turn sessions, `core/session.py`. |
+-| Quote plan, then quote | Built behind a flag | `request_document_quote` in `adapters/straker_tools.py`, `AGENT_NATIVE_DOCUMENT_QUOTES`. The quote message itself is yours. Default: a button to your form. |
+-| Typed "yes, go ahead" is not accepted | Built | `core/prompt.py`; evals `adversarial-approved-yesterday`, `adversarial-skip-approval`. |
++| Quote plan, then quote, buttons with the quote | Built behind a flag | `request_document_quote` in `adapters/straker_tools.py`, `AGENT_NATIVE_DOCUMENT_QUOTES`. The quote message and its buttons are yours. Default: a button to your form. |
++| IBM switch on: one confirming click, no price | Built behind the same flag | `submit_document_translation` (gated), `core/approvals.py`, `runner._gated_presentation`. |
++| Typed "yes, go ahead" points back to the button, never a second one | Built | `core/prompt.py`; evals `adversarial-approved-yesterday`, `adversarial-skip-approval`. |
+ | Accept button, validation, submission | Yours | `app/slack/document_mt_quote_actions.py`. The agent never calls it. |
+-| Delivery plan, second message | Built | `runner.handle_backend_event`, fed by `adapters/events.py`. |
++| Session returns to Ready while the service works | Built | `runner.handle_approval`, `handle_backend_event`. |
+ | Files delivered in the conversation | Yours | `slack_upload_mt_result`. |
+ | Feedback buttons | Not built | |
+ | **2. The next day** | Partly built | Sessions persist for seven days and wake on backend events. `verify:human_verification:completed` is not mapped in `adapters/events.py` yet. |
+-| **3. Jobs** | Built | `get_job`, `list_jobs` over `RayService`. No task card for simple look-ups. |
++| **3. Jobs, in Japanese** | Built | Replies follow the person's language (`core/prompt.py`; evals in ja, de, pt, fr). |
++| Job look-ups | Built | `get_job`, `list_jobs` over `RayService`. No task card for simple look-ups. |
+ | Approve a waiting job quote from the conversation | Yours | Your `JobQuotedMessage` buttons. The agent only tells the person it is waiting. |
+-| **4. In a channel** | Built | `app_mention` reaches the seam with `use_thread=True`. Only the asker can approve: `core/approvals.py`. |
++| **4. In a channel** | Posting built; attribution and Remove not | `app_mention` reaches the seam with `use_thread=True`; `post_translation_in_thread` runs without a click. Attribution and the requester-only Remove need a change to your `slack:direct:mt:result` handler. |
+ | **5. Suggestion by DM** | Rules built, trigger not | `core/suggestions.py`, `slack_ui.suggestion_blocks`. |
+ | **6. Hand-off to a form** | Built | `offer_form` posts a button carrying your existing `action_id` and payload shape (`slack_ui.FORM_ACTION_IDS`). Your openers, and your trigger-safety pattern, do the rest. `new_job` has no button opener, so it gets text only. |
+ | **7. When things go wrong** | | |
+-| Expired quote | Yours | The message shown is your existing copy. |
++| Expired quote | Yours, plus not built | The expiry message is your existing copy. Automatic re-quote with the difference is not built. |
+ | Stop | Built | `bolt.agent_session_stopped`, `runner.handle_stop`. |
+ | Model unavailable | Built | `runner` fallback plus `bolt.agent_quick_*`. |
+ | **8. IBM workspace** | Built, reusing yours | No connect or money talk: `core/prompt.py` plus the reply guard in `runner._guard`. People who cannot see quotes get your form. Admin-only suggestions: `suggestions.can_enable`. |
+diff --git a/docs/arbitr-agent-runbook.md b/docs/arbitr-agent-runbook.md
+index 7134d65b..0aff4df8 100644
+--- a/docs/arbitr-agent-runbook.md
++++ b/docs/arbitr-agent-runbook.md
+@@ -10,7 +10,7 @@ cannot start. This run-book is the test. Please record what happens at each step
+ 2. Regenerate the lock file against the private index: `pipenv lock && pipenv install --dev`.
+    `anthropic` 1.x uses `httpx2`, a separate package, so it does not collide with the app's `httpx<1.0` pin.
+ 3. Core tests, which need nothing: `pipenv run pytest tests/agent --noconftest -q --ignore=tests/agent/adapters`
+-   Expected: 131 passed. (`--noconftest` because `tests/conftest.py` connects to MySQL at import.)
++   Expected: 138 passed. (`--noconftest` because `tests/conftest.py` connects to MySQL at import.)
+ 4. Your full suite: `pipenv run pytest`. Expected: no new failures against `master`.
+ 5. Create a **separate dev Slack app** from `manifest.agent.yml` (replace `<YOUR_DOMAIN>`). Do not
+    change the production app: switching a manifest to `agent_view` cannot be reversed and, for a
+@@ -29,8 +29,8 @@ cannot start. This run-book is the test. Please record what happens at each step
+ | 5 | DM "Put this in Japanese: The launch moves to 14 October." | A task card "Translate the text", then the translation arrives through the existing `slack:direct:mt:result` path. Usage billed once as `direct_machine_translation`. | |
+ | 6 | DM a .docx with "translate this into French" | A button "Open document form". Clicking it opens your existing Document MT modal with the file selected. | |
+ | 7 | DM an .mp4 with "add Japanese subtitles" | A button "Open media form" that opens the existing media modal. | |
+-| 8 | In a channel thread: "@bot post this in Japanese" as user A | A reply with **Post it** and **Decline**. Session status "Waiting on you". Nothing posted yet. | |
+-| 9 | User B clicks **Post it** | An ephemeral refusal to B. Nothing posted. | |
++| 8 | In a channel thread: "@bot post this in Japanese" | The translation appears in the thread with no confirming click, through the existing MT result path. Billed once. | |
++| 9 | From a DM: "post a Japanese version of <message link> into its thread in #channel" as user A | A reply with **Post it** and **Decline**. Status "Waiting on you". Nothing posted yet. User B clicking gets an ephemeral refusal. | |
+ | 10 | User A clicks **Post it**, then clicks it again | One translation in the thread. The second click gets "already used". One billing record. | |
+ | 11 | Start a long request, press Slack's Stop button | "Stopped." and status back to Ready. | |
+ | 12 | Send the same Slack event twice (replay the request body) | One reply, one model call. | |
+@@ -38,7 +38,10 @@ cannot start. This run-book is the test. Please record what happens at each step
+ | 14 | In an IBM-flagged workspace, DM "how do I connect my account and top up?" | No mention of connecting, balances or top-ups. | |
+ | 15 | As a non-admin with `QUOTE_ADMIN_ONLY=true`, DM "how much will this cost?" | No amount in the reply. | |
+ | 16 | Trigger any `/ray/events` event with the flag on and off | Your existing handling is unchanged in both cases. | |
+-| 17 | (Optional, after review) `AGENT_NATIVE_DOCUMENT_QUOTES=true`, as an Admin DM a file with "translate into German, it's in English" | Your existing quote message with Accept Quote appears. The agent states no price. | |
++| 17 | (After reviewing `adapters/straker_tools.py`) `AGENT_NATIVE_DOCUMENT_QUOTES=true`. As an Admin, DM a file with "translate into German, it's in English" | Your existing quote message with Accept Quote appears. The agent states no price. | |
++| 18 | Same flag. As a non-admin with `QUOTE_ADMIN_ONLY=true`, DM a file with "translate into German, it's in English" | "This will be charged to your organization. Translate the attached file into German?" with **Translate now**. No price anywhere. Nothing submitted yet. | |
++| 19 | Type "yes, go ahead" instead of clicking | The agent points to the button. No second button. Nothing submitted. | |
++| 20 | Click **Translate now**, then click it again | One `process_document_mt_submission` task enqueued, identical to a form submission. Second click: "already used". Status returns to Ready; the file arrives through the existing delivery path. | |
+ 
+ ## Please confirm or correct
+ 
+@@ -62,7 +65,11 @@ These are judgement calls made without being able to ask you.
+    web process that also runs the SAQ worker. `app/routers/slack.py` already warns above 5 s.
+ 8. **Conversion rule** between the dollars shown in quotes and Credits, if Credits are to be shown.
+ 9. **Does anything downstream match on** `"source": "Straker Translate for Slack"`? (For the rebrand.)
+-10. **Scope approval.** `app/slack/app.py` notes that new scopes are held until approved for
++10. **Notifications.** Does a reply in a day-old agent session thread notify the person, or only show in
++    their Threads view? If the latter, the agent should also post a top-level pointer.
++11. **Per-slide review and reviewer notes.** Can the service review one slide or page by number, and can a
++    reviewer's change note come back with the file? The POC currently offers "send that slide as its own file".
++12. **Scope approval.** `app/slack/app.py` notes that new scopes are held until approved for
+     production. `assistant:write` is the only new one.
+ 
+ ## If something breaks
+diff --git a/docs/arbitr-agent.md b/docs/arbitr-agent.md
+index 112d63c0..b94890d5 100644
+--- a/docs/arbitr-agent.md
++++ b/docs/arbitr-agent.md
+@@ -5,7 +5,7 @@ Slack agent panel, or an @-mention, and the agent uses the app's existing functi
+ to get it done. It replaces the IBM Watson Assistant intent matcher for free-text
+ messages. Shortcuts, the slash command, forms and the Home tab are unchanged.
+ 
+-**Status: tested core, reviewed wiring, not yet run.** The core has 131 automated
++**Status: tested core, reviewed wiring, not yet run.** The core has 138 automated
+ tests that run anywhere. The adapter was written from a reading of this codebase and
+ has never executed, because the app cannot start outside Straker's network. Start
+ with [the run-book](arbitr-agent-runbook.md).
+@@ -25,7 +25,7 @@ returns immediately. It also needs `ANTHROPIC_API_KEY`; without a key the agent
+ | `AGENT_ENABLED` | `false` | Master switch. |
+ | `ANTHROPIC_API_KEY` | unset | Required for the agent to switch on. Read from the environment, not from `integration_keys`. |
+ | `AGENT_MODEL` | `claude-opus-5` | The model behind the vendor-neutral port. |
+-| `AGENT_NATIVE_DOCUMENT_QUOTES` | `false` | See "Documents" below. |
++| `AGENT_NATIVE_DOCUMENT_QUOTES` | `false` | Conversational document translation, for both kinds of person. See "Documents" below. Off: everyone gets a button to the existing form. |
+ | `AGENT_SUGGESTIONS_ENABLED` | `false` | Reserved. The suggestion rules exist and are tested; the channel trigger is not wired. |
+ | `AGENT_FOLLOWUPS_ENABLED` | `false` | Reserved. See "What is not wired". |
+ 
+@@ -48,7 +48,7 @@ laptop, and it keeps your review small: the adapters and five short edits.
+ | `runner.py` | The only orchestrator: `handle_message`, `handle_approval`, `handle_stop`, `handle_backend_event`. |
+ | `llm.py` | `LlmPort` (vendor-neutral) and `ClaudeLlm`. A manual tool loop, because a turn can pause for hours on a click and must resume from Redis in another process. |
+ | `prompt.py` | System prompt. Frozen rules first, per-request facts last, so the prompt cache can serve the long part. |
+-| `tools.py` | The nine tools and their strict schemas. |
++| `tools.py` | The eleven tools and their strict schemas. Which ones a person is offered depends on whether they can see quotes and where they are talking to the agent. |
+ | `approvals.py` | The approval gate. |
+ | `session.py` | JSON sessions in Redis, per-thread lock, duplicate-event guard, stop flag, quote-to-session map. |
+ | `slack_ui.py` | Pure builders for every Slack payload. |
+@@ -102,28 +102,43 @@ never a task card: Slack's task cards have no waiting state.
+ 
+ ## Money and posting
+ 
+-The agent cannot submit, accept, pay for or cancel anything. This is structural:
+-
+-- **Quoted work.** The agent never calls a submission or acceptance function. With
+-  `AGENT_NATIVE_DOCUMENT_QUOTES=true` and a person who may see quotes, it calls
+-  `enqueue_document_mt_quote_preflight`, which only prices. Your existing quote message,
+-  your Accept button and your validation do the rest.
+-- **People who cannot see quotes** are handed the existing Document MT form through a
+-  button, so their experience, including the one click on Submit, is exactly today's.
+-- **Posting for others to see** (`post_translation_publicly`) is the one gated tool. It runs
+-  only from `handle_approval` after `ApprovalGate.verify`: the click must come from the
+-  person who asked, within 15 minutes, once, on a session that has not been stopped. The
+-  button carries only a random id; the action that runs is the input stored at proposal
+-  time. Sabotaging `is_gated` makes seven tests fail.
+-- **Inline translation is metered, not quoted**, exactly as the translate shortcut is today:
+-  `require_mt_tokens`, then `get_mt_translation`. The agent says so when it offers a public post.
++The agent cannot accept, pay for or cancel anything, and it can start paid work in exactly
++one way, after a click. This is structural:
++
++- **People who can see quotes** (`user_may_receive_quotes`): with native documents on, the agent
++  calls `enqueue_document_mt_quote_preflight`, which only prices. Your existing quote message,
++  your Accept button and your validation do the rest. The agent never states a price.
++- **People who cannot see quotes** (most IBM employees): today their form's Submit bills the
++  organization with no quote. With native documents on, the agent offers the same thing in
++  conversation with **one confirming click and no price**: "This will be charged to your
++  organization. Translate the attached file into Japanese, German?" with **Translate now**.
++  After the click, `submit_document_translation` runs the same checks as
++  `handle_document_mt_job` and makes the same `enqueue_document_mt_submission(..., quote_id=None)`
++  call. The worker task still owns download, upload, duplicate tracking and publication. A
++  version with no click at all was deliberately not built: a misread request would spend a
++  customer's money.
++- **The click is verified in code** (`core/approvals.py`): it must come from the person who
++  asked, within 15 minutes, once, on a session that has not been stopped. The button carries
++  only a random id; what runs is the input stored at proposal time. A typed "yes" is never an
++  approval: the agent points back to the button and never posts a second one. Sabotaging
++  `is_gated` makes the tests fail.
++- **Posting for others to see.** An explicit request made in a channel thread ("@Arbitr post
++  this in Japanese") is its own attributable record for a metered, unquoted action, so
++  `post_translation_in_thread` runs without a click, as the translate shortcut does today. It is
++  only offered when the agent was mentioned in a thread. From anywhere else (a DM asking to post
++  into a channel), and whenever Arbitr spoke first, `post_translation_publicly` needs a click.
++- **Inline translation is metered, not quoted**, exactly as today: `require_mt_tokens`, then
++  `get_mt_translation`.
+ - `tests/agent/test_adapters_static.py` parses the adapters and fails if they reference
+-  `enqueue_document_mt_submission`, `document_machine_translate`, `handle_document_mt_submit`,
+-  `accept_document_mt_quote`, `cancel_document_mt_quote`, `new_job`, `cancel_job`,
+-  `submit_job`, `create_human_job` or `mark_document_mt_quote_accepted`.
++  `document_machine_translate`, `handle_document_mt_submit`, `accept_document_mt_quote`,
++  `cancel_document_mt_quote`, `new_job`, `cancel_job`, `submit_job`, `create_human_job` or
++  `mark_document_mt_quote_accepted`, and fails if `enqueue_document_mt_submission` appears
++  anywhere except inside `submit_document_translation`, whose tool must be gated.
+ 
+-Stop (Slack's native button, `agent_session_stopped`) cancels anything not yet approved.
+-Work already accepted and paid for carries on; cancelling a paid job stays its own explicit action.
++Long jobs are handed to the service and the session returns to Ready; it does not sit on
++"Working" for the length of a job. Stop (Slack's native button, `agent_session_stopped`)
++therefore applies to the agent's own work: it cancels anything not yet approved. Jobs already
++with the translation service carry on, and cancelling one stays the explicit action it is today.
+ 
+ ## What the language model sees
+ 
+@@ -155,13 +170,15 @@ message text, and a test enforces that.
+ | IBM workspace, reply mentions connecting, balances or top-ups | Reply replaced with safe fixed copy; outcome recorded as `partial`. |
+ | Person who cannot see quotes, reply contains an amount | Reply replaced. |
+ 
+-## Documents: why the native quote is off by default
++## Documents: why conversational documents are off by default
+ 
+ The Document MT form owns the language list (`language_mt_options`), the same-language-family
+-rule, the file accessibility check and the duplicate-submission check. `request_document_quote`
+-mirrors those steps in the same order and reuses your helpers, but it has not been run, and
+-language codes chosen by a model are validated only against `get_language_options()`. Until
+-you have reviewed that one function, leave the flag off: everyone gets the form, as today.
++rule and the file accessibility check. `_validated_document_request` in
++`adapters/straker_tools.py` mirrors those steps in the same order with your helpers, and both
++document tools use it. But it has never run, language codes chosen by a model are validated
++only against `get_language_options()`, and one of the two tools starts paid work. Until you
++have reviewed that file, leave `AGENT_NATIVE_DOCUMENT_QUOTES=false`: neither tool is offered,
++and everyone gets a button to your form, as today. The POC shows the experience with it on.
+ 
+ ## What is not wired
+ 
+@@ -171,6 +188,10 @@ you have reviewed that one function, leave the flag off: everyone gets the form,
+   registers them. The app has no scheduler today; adding `cron_jobs` to a worker is yours to decide.
+ - **Channel suggestions.** Rules and blocks are tested. The trigger in the `message` handler,
+   per-channel state, and the member-language count are not written.
++- **Attribution and a requester-only Remove button on in-thread posts.** The translated message is
++  posted by your `slack:direct:mt:result` handler, so both need a small change there.
++- **Re-quoting an expired document quote and showing the difference.** Shown in the POC.
++- **A top-level pointer when a reply lands in a day-old session thread**, if Slack does not notify.
+ - **Suggested prompts, feedback buttons, `app_context_changed`, resuming after account connect.**
+   Shown in the POC. Suggested prompts need `app_home_opened`, which already has a listener
+   here, and Bolt runs only the first matching listener, so it needs an edit to yours.
+@@ -182,7 +203,8 @@ you have reviewed that one function, leave the flag off: everyone gets the form,
+ ## Voice
+ 
+ In conversation the agent speaks as "I". Notices, buttons and attributions name Arbitr. It
+-never says "we", which would blur an automated actor into a team of people. No exclamation
++never says "we", which would blur an automated actor into a team of people. Replies lead with
++what the person can do next and put the limit second, and avoid internal terms. No exclamation
+ marks, no emoji, no long dashes, never "users". A refusal has three parts: what happened,
+ why, what happens next. `core/voice.py` checks all of this mechanically and every fixed
+ string in `core/copy.py` is tested against it. New fixed copy belongs in `copy.py`, and the
+-- 
+2.50.1 (Apple Git-155)
+

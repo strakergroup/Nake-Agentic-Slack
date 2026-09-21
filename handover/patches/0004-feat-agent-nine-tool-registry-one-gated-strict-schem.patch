@@ -1,7 +1,7 @@
 From 197745045741f130e40338a5ac6701c3d8ebd587 Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 10:52:52 +0100
-Subject: [PATCH 04/11] feat(agent): nine-tool registry, one gated, strict
+Subject: [PATCH 04/13] feat(agent): nine-tool registry, one gated, strict
  schemas
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

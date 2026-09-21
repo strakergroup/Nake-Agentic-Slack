@@ -1,7 +1,7 @@
 From 2cb3ea7a014f031ae16101567b2679301704590d Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 11:06:14 +0100
-Subject: [PATCH 09/11] test(agent): 34 scripted eval conversations and a
+Subject: [PATCH 09/13] test(agent): 34 scripted eval conversations and a
  harness for real-Claude runs
 
 Dry run verified. The real run needs ANTHROPIC_API_KEY and has not happened yet.

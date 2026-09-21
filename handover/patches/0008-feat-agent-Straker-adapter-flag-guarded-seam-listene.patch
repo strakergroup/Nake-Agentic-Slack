@@ -1,7 +1,7 @@
 From 1b4311742400cb5ca95805da19edb58f6ef96d27 Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 11:04:02 +0100
-Subject: [PATCH 08/11] feat(agent): Straker adapter, flag-guarded seam,
+Subject: [PATCH 08/13] feat(agent): Straker adapter, flag-guarded seam,
  listeners, event bridge and scheduler hook
 
 AGENT_ENABLED defaults to false; with it off the app behaves as before.

@@ -1,7 +1,7 @@
 From d91d5111ff7535034aaf2ef913579dd274768cb6 Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 11:19:03 +0100
-Subject: [PATCH 11/11] docs(agent): architecture, run-book and POC map; dev
+Subject: [PATCH 11/13] docs(agent): architecture, run-book and POC map; dev
  manifest; /arbitr accepted
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

@@ -1,7 +1,7 @@
 From 8dbcb431a61b39e56bf5e3aa77ed1faf28941c5b Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 10:59:13 +0100
-Subject: [PATCH 07/11] feat(agent): suggestion rules, follow-ups, digest and
+Subject: [PATCH 07/13] feat(agent): suggestion rules, follow-ups, digest and
  prompt tests; house-style formatting
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

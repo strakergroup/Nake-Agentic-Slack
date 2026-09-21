@@ -321,3 +321,32 @@ database addition, review of the pull requests, and ownership of the production 
 - Governance features such as checking whether content is safe to publish.
 - The IBM adoption campaign.
 - A second LLM vendor. The interface allows one; none is built.
+
+## 15. Amendments after code mapping and two mock-up reviews (2026-09-21)
+
+These supersede the sections above where they differ.
+
+**Hand-off (replaces the sandbox demo in sections 3, 10, 11, 12).** The front-end POC is the demo. The working app is code inside a copy of the existing app, relying on Straker's database and services, run by Wade's team. It cannot start outside Straker's network (five private packages, import-time database queries), so it is handed over as "tested core, reviewed wiring": an agent core with no dependency on the app, tested locally, and a thin adapter that has been read against the source but never run. No Slack sandbox, no simulated backend. Nake lifted the no-push rule for one branch, `arbitr-agent`, at hand-over only, after Wade has had the heads-up and with a fresh confirmation at that moment.
+
+**What the code showed.**
+- One seam: every free-text DM and @-mention reaches the single Watson call in `respond_to_message`.
+- Quotes display in dollars (`USD 40.00`); balance prompts say "AI tokens". Document quotes last 12 hours; evaluation and human-translation quotes 30 days.
+- With `QUOTE_ADMIN_ONLY=true`, only Verify Admins and Owners see quotes. Everyone else's document form submits and bills the organization without one.
+- Inline translation is metered against the balance and never quoted.
+- A form can only be opened from a click, so hand-offs are buttons.
+- The app has no scheduler, no per-slide review, and no record linking a job to a Slack thread.
+
+**The promise (replaces "approve anything that costs money").** Quoted work waits for your click. Arbitr never posts for others unless you asked or clicked. Inline translation is metered as it is today.
+
+**Decisions.**
+- Units: show dollars and Credits together in the POC; Credits figures are illustrative until the conversion rule is known. In the app, prices are printed by the existing quote message.
+- People who cannot see quotes: one confirming click, no price, then the same submission their form makes today. Behind `AGENT_NATIVE_DOCUMENT_QUOTES`, off by default; with it off everyone is handed the existing form. A no-click version was deliberately not built.
+- Quoted work: the agent only requests the quote; the existing quote message and Accept button do the rest. A typed "yes" is never an approval, and there is never a second live button.
+- An explicit request in a channel thread posts without a click (it is the attributable record, and the action is metered and unquoted). A click is still required when the request comes from elsewhere and whenever Arbitr speaks first.
+- Suggestions are delivered as a direct message, not an ephemeral message. Privacy wording: the app already receives messages in channels it is a member of; a suggestion adds a language-detection call to Straker's own service; nothing goes to the model provider until a click.
+- Voice: "I" in conversation; "Arbitr" in notices, buttons and attributions; never "we". Lead with the way forward, limit second. AI disclaimer on deliverables only.
+- Plans: buttons ship with the quote. No task card for simple look-ups, none that arrives already finished, none left on "Working"; waiting is the session status. Long jobs are handed to the service and the session returns to Ready. Stop applies to the agent's own work; cancelling a paid job stays its own explicit action.
+- Auto-approve under a threshold: shown in the POC's Home tab as a labelled concept only. It changes who authorises spending and needs a billing-policy decision by Straker and the customer.
+- Follow-ups and digest: rules built and tested; never remind about an expired quote; scheduler hook defined but not wired.
+
+**Not built, shown in the POC as planned:** suggested prompts, feedback buttons, attribution and Remove on in-thread posts, automatic re-quote of expired quotes, resume after account connect, using what the person has open beside the agent, the channel trigger for suggestions, a "Waiting on you" Home block, default target languages, localisation of fixed copy.

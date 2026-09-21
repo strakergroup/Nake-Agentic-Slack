@@ -1,7 +1,7 @@
 From d5df73af745f6fc2a4d113ca3086e8c2a16c7b10 Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 11:16:55 +0100
-Subject: [PATCH 10/11] fix(agent): behaviour changes from the mock-up review
+Subject: [PATCH 10/13] fix(agent): behaviour changes from the mock-up review
 
 First-person voice in conversation, never 'we'. Two plans: a request and its
 execution are separate streamed messages, because Slack attaches buttons only

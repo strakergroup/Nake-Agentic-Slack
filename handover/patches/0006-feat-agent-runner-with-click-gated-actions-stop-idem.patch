@@ -1,7 +1,7 @@
 From 0bab3e27340df27669f1129b1431713e8ea43d0a Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 10:58:56 +0100
-Subject: [PATCH 06/11] feat(agent): runner with click-gated actions, stop,
+Subject: [PATCH 06/13] feat(agent): runner with click-gated actions, stop,
  idempotency and reply guards
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

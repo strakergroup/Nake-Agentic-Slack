@@ -1,7 +1,7 @@
 From 57e7813027f74c8d5c5707c9601b252c07fe2393 Mon Sep 17 00:00:00 2001
 From: Nake Sekander <nake.sekander@strakergroup.com>
 Date: Mon, 21 Sep 2026 10:51:48 +0100
-Subject: [PATCH 02/11] feat(agent): approval gate with personal, single-use,
+Subject: [PATCH 02/13] feat(agent): approval gate with personal, single-use,
  expiring approvals
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

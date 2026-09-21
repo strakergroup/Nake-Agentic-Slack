@@ -13,12 +13,12 @@ Nine scenes, with presenter notes that explain the Slack platform constraints be
 
 **What the code is.** One new folder, `app/agent/`, and five small edits to existing files (35 lines in the Python files), all behind `AGENT_ENABLED`, which defaults to off. With it off the app behaves exactly as today. If the agent throws, Watson answers as before.
 
-- `app/agent/core/` imports nothing from the rest of the app. It has 131 tests that run anywhere, and passes your ruff and pyright settings.
+- `app/agent/core/` imports nothing from the rest of the app. It has 138 tests that run anywhere, and passes your ruff and pyright settings.
 - `app/agent/adapters/` is the only part that touches your code. It was written by reading the source.
 
-**What has and has not been proven.** The core is tested. The adapter has never run: the app needs your database and private packages, so it cannot start outside your network. I'd describe this as "tested core, reviewed wiring, ready for your dev environment", not as working. `docs/arbitr-agent-runbook.md` is a 17-step checklist with the expected result at each step; that checklist is the real test, and I expect some of my readings of the code to be wrong.
+**What has and has not been proven.** The core is tested. The adapter has never run: the app needs your database and private packages, so it cannot start outside your network. I'd describe this as "tested core, reviewed wiring, ready for your dev environment", not as working. `docs/arbitr-agent-runbook.md` is a 20-step checklist with the expected result at each step; that checklist is the real test, and I expect some of my readings of the code to be wrong.
 
-**On money.** The agent cannot submit, accept, pay for or cancel anything. Quoted work still goes through your quote message and your Accept button. People who can't see quotes are handed your existing document form. A test fails if the adapter ever references your submission or acceptance functions. The one thing the agent gates itself is posting a translation publicly in a channel, which needs a click from the person who asked.
+**On money.** The agent cannot accept, pay for or cancel anything. Quoted work still goes through your quote message and your Accept button. By default everyone is handed your existing document form. Behind a second flag (`AGENT_NATIVE_DOCUMENT_QUOTES`, off), people who can't see quotes get the same submission your form makes for them today, but in conversation and only after one confirming click with no price shown. A test fails if `enqueue_document_mt_submission` appears anywhere except inside that one click-gated function, or if the adapter references your acceptance or cancellation functions at all. Please review `app/agent/adapters/straker_tools.py` before turning that flag on.
 
 **What I'd like from you.**
 1. A look at the demo, and your honest reaction.
@@ -27,7 +27,7 @@ Nine scenes, with presenter notes that explain the Slack platform constraints be
 
 **How to get the code.** Attached is `arbitr-agent.bundle` (`git fetch arbitr-agent.bundle arbitr-agent:arbitr-agent`), plus the same commits as patches. If you'd rather have it as a branch on the repo, tell me and I'll push `arbitr-agent` only, no other branch.
 
-**How we'll know it landed.** Your filled-in checklist. If steps 1, 2, 6, 10 and 16 pass, the approach holds and the rest is tuning.
+**How we'll know it landed.** Your filled-in checklist. If steps 1, 2, 6, 8 and 16 pass, the approach holds and the rest is tuning. Steps 17 to 20 are the ones that involve money; they wait for your review.
 
 Start with `docs/arbitr-agent.md`.
 
