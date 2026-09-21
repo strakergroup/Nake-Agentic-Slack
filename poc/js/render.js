@@ -244,13 +244,19 @@ export function render(stageEl, scenario, state, { onChoose, label, fresh } = {}
   if (label) pane.append(el('div', 'pane-label', label));
   pane.append(header(scenario, state));
   const stream = el('div', 'stream');
+  let lastNode = null;
   if (state.items.length === 0) stream.append(el('p', 'empty', 'Select Next to begin.'));
   for (const item of state.items) {
     const draw = renderers[item.kind];
     if (!draw) throw new Error(`no renderer for kind: ${item.kind}`);
-    stream.append(draw(item, onChoose));
+    const node = draw(item, onChoose);
+    // A thread reply belongs under the message it answers, not under the
+    // private suggestion that triggered it.
+    if (item.kind === 'thread_reply' && stream.children.length > 1) stream.insertBefore(node, stream.children[1]);
+    else stream.append(node);
+    lastNode = node;
   }
-  if (fresh && stream.lastElementChild) stream.lastElementChild.classList.add('is-new');
+  if (fresh && lastNode) lastNode.classList.add('is-new');
   pane.append(stream);
   if (scenario.surface !== 'home') {
     const composer = el('div', 'composer', scenario.surface === 'channel' ? `Message ${scenario.channel}` : 'Message Arbitr');
