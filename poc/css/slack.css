@@ -100,6 +100,7 @@
 .prompts{border:1px solid var(--s-line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
 .prompts-title{font-weight:900}
 .sbtn-prompt:disabled,.sbtn-quiet:disabled{opacity:1}
+.sbtn-typed{border-style:dashed;font-weight:400;font-style:italic;color:var(--s-muted);background:transparent}
 .sbtn-quiet{font-weight:400;color:var(--s-muted)}
 .feedback{flex-direction:row !important}
 .day-divider{display:flex;align-items:center;gap:10px;color:var(--s-muted);font-size:12px;font-weight:700}

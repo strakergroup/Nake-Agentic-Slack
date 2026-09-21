@@ -54,7 +54,8 @@ function paragraphs(text, className = 'msg-text') {
 function choiceRow(item, onChoose) {
   const row = el('div', 'choices');
   for (const c of item.choices) {
-    const b = el('button', `sbtn ${c.style === 'primary' ? 'sbtn-primary' : ''}`.trim(), c.label);
+    // A typed reply is not a Slack button: it is a presenter control, drawn apart from the real ones.
+    const b = el('button', c.typed ? 'sbtn sbtn-typed' : `sbtn ${c.style === 'primary' ? 'sbtn-primary' : ''}`.trim(), c.label);
     b.type = 'button';
     if (item.chosen) {
       b.disabled = true;
@@ -70,12 +71,14 @@ function choiceRow(item, onChoose) {
 const renderers = {
   user(item) {
     const body = paragraphs(item.text);
+    if (item.lang) body.forEach((p) => { p.lang = item.lang; });
     if (item.file) body.push(fileChip(item.file));
     return message({ avatar: personAvatar(item.who), name: item.who, body });
   },
 
   agent(item) {
     const body = paragraphs(item.text);
+    if (item.lang) body.forEach((p) => { p.lang = item.lang; });
     if (item.button) {
       const b = el('button', 'sbtn', item.button);
       b.type = 'button';

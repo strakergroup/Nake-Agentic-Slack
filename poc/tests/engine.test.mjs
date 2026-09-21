@@ -86,6 +86,33 @@ test('the scenario object is never mutated', () => {
   assert.equal(JSON.stringify(demo), before);
 });
 
+const typedDemo = {
+  id: 'typed', title: 'Typed', surface: 'dm', start: 'q',
+  steps: {
+    q: { kind: 'choices', choices: [
+      { id: 'approve', label: 'Approve', style: 'primary', next: 'ok' },
+      { id: 'typed', label: 'types yes', typed: true, next: 't1' },
+    ] },
+    t1: { kind: 'user', who: 'Mika Kato', text: 'yes, go ahead', next: 't2' },
+    t2: { kind: 'agent', text: 'One click on Approve above confirms it.', reopen: 'q' },
+    ok: { kind: 'agent', text: 'Approved.' },
+  },
+};
+
+test('typing instead of clicking leaves one live set of buttons', () => {
+  const p = createPlayer(typedDemo);
+  p.next();
+  p.choose('typed');
+  p.next();
+  const buttons = p.state.items.filter((i) => i.kind === 'choices');
+  assert.equal(buttons.length, 1, 'never a second set of buttons');
+  assert.equal(buttons[0].chosen, undefined, 'the original buttons are still live');
+  assert.deepEqual(p.state.awaiting.choices.map((c) => c.id), ['approve'], 'the typed path cannot loop');
+  p.choose('approve');
+  assert.equal(p.state.items.at(-1).text, 'Approved.');
+  assert.equal(p.state.done, true);
+});
+
 // ---- scenario graph integrity ----
 import { scenarios } from '../js/scenarios.js';
 

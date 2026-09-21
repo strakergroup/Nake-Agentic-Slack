@@ -32,7 +32,13 @@ export function createPlayer(scenario, { ibm = false } = {}) {
     } else {
       state.items.push(step);
     }
-    if (step.choices?.length) {
+    if (step.reopen) {
+      // Go back to buttons that are still live (someone typed instead of clicking).
+      const open = state.items.find((i) => i.id === step.reopen);
+      if (!open) throw new Error(`reopen before choices: ${step.reopen}`);
+      state.awaiting = { stepId: open.id, choices: open.choices };
+      cursor = null;
+    } else if (step.choices?.length) {
       state.awaiting = { stepId: step.id, choices: step.choices };
       cursor = null;
     } else {
@@ -51,7 +57,12 @@ export function createPlayer(scenario, { ibm = false } = {}) {
     const choice = state.awaiting.choices.find((c) => c.id === choiceId);
     if (!choice) throw new Error(`unknown choice: ${choiceId}`);
     const item = state.items.find((i) => i.id === state.awaiting.stepId);
-    item.chosen = choiceId;
+    if (choice.typed) {
+      // Typing is not clicking: the buttons stay live and this path can only be taken once.
+      item.choices = item.choices.filter((c) => c.id !== choiceId);
+    } else {
+      item.chosen = choiceId;
+    }
     state.awaiting = null;
     cursor = choice.next ?? null;
     if (cursor === null) { state.done = true; return; }
